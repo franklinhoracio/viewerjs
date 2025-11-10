@@ -7,9 +7,8 @@ import "./App.css";
 
 // Instancias reales (1 por serie) del estudio que pegaste
 const INSTANCE_IDS = [
-  "9e04f21a-52578091-2d1c3f9b-db7a1292-a34692e2",
-  "da2454c5-62fdc5c3-e9f00ca9-d23207d9-9ba9c133",
-  "0ff3638f-3ecc79f4-748f9a2f-b2ea5486-942a6294",
+  "a3d21ade-9d191c4a-7fbd3562-d7cc400c-fcbfbd38", // Serie 1, Modality DX
+  "122b1f13-47c9bd41-2aaaad2b-7e56bff6-b3ff43da"  // Serie 2, Modality DX
 ];
 
 // Usamos rutas relativas para que pasen por el proxy del package.json
