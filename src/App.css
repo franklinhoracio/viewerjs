@@ -11,39 +11,23 @@ html, body, #root {
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
+  gap: 8px;
 }
 
-/* Pila vertical y centrada */
-.viewport-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  align-items: center;
-  flex: 1;
-}
-
-/* Caja que controla altura vía padding-top (mobile-first) */
+/* Viewport: centrado, 95% ancho en mobile, 65% en desktop; 75% de alto siempre */
 .viewportBox {
   position: relative;
-  width: 100%;
+  width: 95vw;     /* mobile-first */
+  height: 80vh;    /* alto fijo relativo a la ventana */
+  margin: 0 auto;
   max-width: 100%;
+  flex: 0 0 auto;  /* no crecer para no pelearse con el footnote */
 }
 
-/* MÓVIL: 140% de alto respecto al ancho */
-.viewportBox::before {
-  content: "";
-  display: block;
-  padding-top: 140%;
-}
-
-/* DESKTOP (>=1024px): 80% de alto y 50% de ancho de pantalla */
+/* Desktop y pantallas grandes */
 @media (min-width: 1024px) {
   .viewportBox {
-    width: 50vw;        /* ~mitad del ancho de la pantalla */
-    max-width: 900px;   /* límite por si el monitor es enorme */
-  }
-  .viewportBox::before {
-    padding-top: 80%;
+    width: 65vw;   /* 65% del ancho de pantalla */
   }
 }
 
@@ -55,7 +39,9 @@ html, body, #root {
   border: 1px solid #222;
   border-radius: 8px;
   overflow: hidden;
+  touch-action: none; /* antes: pan-y. Ahora capturamos vertical y horizontal */
 }
+
 
 /* Canvas a tamaño lleno */
 .viewport canvas {
@@ -66,7 +52,7 @@ html, body, #root {
 
 /* Pie */
 .footnote {
-  margin-top: 8px;
+  margin-top: 4px;
   font-size: 12px;
   opacity: 0.8;
 }
