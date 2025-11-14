@@ -3,6 +3,7 @@ html, body, #root {
   margin: 0;
   font-family: system-ui, Arial, sans-serif;
   color: white;
+  background-color: #06050a; /* mismo fondo oscuro del visor */
 }
 
 /* Contenedor general */
@@ -15,6 +16,7 @@ html, body, #root {
   gap: 8px;
   background-color: #06050a; /* gris oscuro bonito */
   min-height: 100vh; /* pa' que cubra la pantalla entera */
+  color: #e5e7eb;
 }
 
 /* Viewport: centrado, 95% ancho en mobile, 65% en desktop; 75% de alto siempre */
@@ -134,3 +136,275 @@ html, body, #root {
 .viewport.mode-wl { cursor: crosshair; }
 .viewport.mode-pan { cursor: grab; }
 .viewport.mode-zoom { cursor: zoom-in; }
+
+/* Barra superior SIEMPRE en columna y centrada */
+.topBar {
+  display: flex;
+  flex-direction: column;   /* uno debajo de otro SIEMPRE */
+  align-items: center;      /* centrados horizontalmente */
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.topButton {
+  appearance: none;
+  border: none;
+  border-radius: 999px;
+  padding: 10px 16px;
+  background: #283655; /* azul tipo barra de la captura */
+  color: #f9fafb;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0,0,0,.35);
+  min-width: 240px;
+}
+
+.topButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.topButton:not(:disabled):hover {
+  background: #4d648d;
+}
+
+/* Línea de estudio */
+.studyLine {
+  text-align: center;
+  font-size: 14px;
+  margin-bottom: 4px;
+  color: #e5e7eb;
+}
+
+/* Modales */
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+.modalCard {
+  background: #020617;
+  border-radius: 16px;
+  padding: 20px 22px;
+  max-width: 360px;
+  width: 90vw;
+  box-shadow: 0 20px 40px rgba(0,0,0,.5);
+  border: 1px solid #1f2933;
+  position: relative;
+  padding-top: 40px; /* un pequeño respiro para que no tape el título */
+}
+
+.modalCard h4 {
+  margin-top: 0;
+  margin-bottom: 8px;
+}
+
+.modalCard p {
+  margin: 4px 0;
+  font-size: 14px;
+}
+
+.modalCloseBtn {
+  margin-top: 12px;
+  width: 100%;
+  border-radius: 999px;
+  border: none;
+  padding: 8px 0;
+  font-weight: 600;
+  background: #4d648d;
+  color: #f9fafb;
+  cursor: pointer;
+}
+
+/* Lista de estudios */
+.studyList {
+  list-style: none;
+  padding: 0;
+  margin: 4px 0 8px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.studyItemBtn {
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: 6px 4px;
+  border-radius: 10px;
+  cursor: pointer;
+  color: #e5e7eb;  /* color base del texto dentro del botón */
+}
+
+.studyItemBtn:hover {
+  background: rgba(148, 163, 184, 0.15);
+}
+
+.studyItemTitle {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: #e5e7eb;   /* texto claro para el fondo oscuro */
+}
+
+.studyItemMeta {
+  display: block;
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.studyShareButton {
+  appearance: none;
+  border: none;
+  border-radius: 999px;
+  padding: 10px 16px;
+  background: #283655;        /* mismo estilo */
+  color: #f9fafb;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0,0,0,.35);
+  margin: 8px auto 0;         /* centrarlo siempre */
+  min-width: 260px;           /* mismo tamaño visual */
+  display: block;
+}
+
+.studyShareButton:hover {
+  background: #4d648d;
+}
+
+.studyShareButton:disabled {
+  opacity: .5;
+  cursor: default;
+}
+
+/* QR */
+.qrContainer {
+  display: flex;
+  justify-content: center;
+  padding: 10px 0;
+  align-items: center;
+  margin: 12px 0 6px 0;  /* respirito sano */
+}
+
+.qrImage {
+  width: 200px;
+  height: 200px;
+  border-radius: 12px;
+}
+
+/* Botones de compartir */
+.shareButtons {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 16px;
+  width: 100%;
+}
+
+.shareButtons .shareBtn {
+  width: 100%;
+  box-sizing: border-box;
+  text-align: center;
+}
+
+.shareBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 12px 14px;
+  background: #4d648d;
+  border-radius: 999px;
+  color: #ffffff;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 14px;
+  box-sizing: border-box;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;   /* <- CLAVE: no deja que el texto salte de línea */
+}
+
+.shareBtn:hover {
+  background: #6e85b7;
+}
+
+/* Contenedor que iguala el ancho de los 3 botones */
+.topGroup {
+  display: inline-flex;      /* el ancho será el del elemento más grande */
+  flex-direction: column;
+  align-items: stretch;      /* que todos ocupen el mismo ancho */
+  justify-content: center;
+  gap: 8px;
+  margin: 0 auto 12px auto;  /* centrado */
+}
+
+.downloadIconBtn {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  background: #4d648d;
+  border: none;
+  border-radius: 8px;
+  padding: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.downloadIconBtn:hover {
+  background: #6e85b7;
+}
+
+.downloadIcon {
+  width: 22px;
+  height: 22px;
+  fill: #ffffff;
+}
+
+.bottomActions {
+  display: flex;
+  justify-content: center;
+  margin-top: 12px;
+}
+
+/* Caja de reporte */
+.reportBox {
+  max-width: 720px;
+  margin: 24px auto 16px auto;
+  padding: 16px 18px;
+  border-radius: 16px;
+  background: #020617;
+  border: 1px solid #1f2933;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+}
+
+.reportBox h4 {
+  margin-top: 0;
+  margin-bottom: 10px;
+}
+
+.reportText {
+  white-space: pre-wrap;   /* respeta saltos de línea pero se adapta al ancho */
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.reportEmpty {
+  font-size: 14px;
+  color: #9ca3af;
+}
+

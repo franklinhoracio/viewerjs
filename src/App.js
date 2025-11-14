@@ -7,6 +7,10 @@ import "./App.css";
 
 const BASE = "";
 
+// Orthanc directo para descargas (ajusta host/puerto a tu entorno)
+const ORTHANC_DOWNLOAD_BASE =
+  process.env.REACT_APP_ORTHANC_BASE || "http://168.243.238.18:5172/";
+
 const wadouriFromInstanceId = (id) =>
   `wadouri:${BASE}/instances/${id}/file?contentType=application/dicom`;
 
@@ -57,10 +61,29 @@ const sortInstances = (arr) =>
     return a.ID < b.ID ? -1 : 1;
   });
 
+// --------- formato fecha para cabecera ----------
+const formatDate = (yyyymmdd) => {
+  if (!yyyymmdd || yyyymmdd.length !== 8) return "";
+  const y = yyyymmdd.slice(0, 4);
+  const m = yyyymmdd.slice(4, 6);
+  const d = yyyymmdd.slice(6, 8);
+  return `${d}/${m}/${y}`;
+};
+
 export default function App() {
   const viewportRef = useRef(null);
   const titleRef = useRef(null);
   const counterRef = useRef(null);
+
+  // header: paciente y estudios
+  const [patientInfo, setPatientInfo] = useState(null);
+  const [patientStudies, setPatientStudies] = useState([]); // historial
+  const [currentStudyMeta, setCurrentStudyMeta] = useState(null);
+
+  const [showPatientModal, setShowPatientModal] = useState(false);
+  const [showStudiesModal, setShowStudiesModal] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [showReport, setShowReport] = useState(false);
 
   // tool state
   const [activeTool, setActiveTool] = useState("navigate");
@@ -162,6 +185,98 @@ export default function App() {
     if (next !== iIdxRef.current) goTo(sIdxRef.current, next);
   };
 
+  // ----------- loadStudy: carga estudio + paciente + historial -----------
+  const loadStudy = async (studyId) => {
+    if (!studyId) return;
+
+    try {
+      // 1) Metadatos del estudio
+      const studyResp = await fetch(`${BASE}/studies/${studyId}`);
+      if (!studyResp.ok) throw new Error(`Study HTTP ${studyResp.status}`);
+      const studyJson = await studyResp.json();
+      const sTags = studyJson.MainDicomTags || {};
+
+      setCurrentStudyMeta({
+        id: studyId,
+        description: sTags.StudyDescription || "Estudio sin descripción",
+        date: sTags.StudyDate || "",
+      });
+
+      // 2) Paciente + estudios del paciente
+      const patientId = studyJson.ParentPatient;
+      if (patientId) {
+        // datos de paciente
+        const pResp = await fetch(`${BASE}/patients/${patientId}`);
+        if (pResp.ok) {
+          const pJson = await pResp.json();
+          const pTags =
+            pJson.PatientMainDicomTags || pJson.MainDicomTags || {};
+          setPatientInfo({
+            id: patientId,
+            name: pTags.PatientName || "Paciente sin nombre",
+            sex: pTags.PatientSex || "",
+            birthDate: pTags.PatientBirthDate || "",
+            patientId: pTags.PatientID || "",
+          });
+        }
+
+        // lista de estudios del paciente
+        const listResp = await fetch(
+          `${BASE}/patients/${patientId}/studies?expand=true`
+        );
+        if (listResp.ok) {
+          const listJson = await listResp.json();
+          const mapped = listJson.map((st) => {
+            const t = st.MainDicomTags || {};
+            return {
+              id: st.ID,
+              description: t.StudyDescription || "Estudio sin descripción",
+              date: t.StudyDate || "",
+              modality: t.Modality || t.ModalitiesInStudy || "",
+            };
+          });
+          setPatientStudies(mapped);
+        }
+      }
+
+      // 3) Series + instancias
+      const sResp = await fetch(studySeriesExpanded(studyId));
+      if (!sResp.ok) throw new Error(`Series HTTP ${sResp.status}`);
+      const seriesExp = await sResp.json();
+      const orderedSeries = sortSeries(seriesExp);
+
+      const seriesWithInstances = [];
+      for (const s of orderedSeries) {
+        const r = await fetch(seriesInstancesEx(s.ID));
+        if (!r.ok) continue;
+        const instExp = await r.json();
+        const orderedInst = sortInstances(instExp);
+        if (orderedInst.length) {
+          const desc =
+            s?.MainDicomTags?.SeriesDescription ||
+            s?.MainDicomTags?.ProtocolName ||
+            `Serie ${seriesWithInstances.length + 1}`;
+          seriesWithInstances.push({
+            seriesId: s.ID,
+            description: desc,
+            instances: orderedInst,
+          });
+        }
+      }
+
+      if (!seriesWithInstances.length) {
+        console.warn("Sin instancias visibles");
+        return;
+      }
+      seriesListRef.current = seriesWithInstances;
+      sIdxRef.current = 0;
+      iIdxRef.current = 0;
+      showImage();
+    } catch (e) {
+      console.error("loadStudy error", e);
+    }
+  };
+
   useEffect(() => {
     // Bridge
     cornerstoneWADOImageLoader.external.cornerstone = cornerstone;
@@ -218,44 +333,13 @@ export default function App() {
       }
     };
 
-    // Cargar estudio
+    // Cargar estudio inicial desde ?study=
     const studyId = new URLSearchParams(window.location.search).get("study");
-    const boot = async () => {
-      if (!studyId) return console.warn("Falta ?study=<StudyID>");
-      try {
-        const sResp = await fetch(studySeriesExpanded(studyId));
-        if (!sResp.ok) throw new Error(`Series HTTP ${sResp.status}`);
-        const seriesExp = await sResp.json();
-        const orderedSeries = sortSeries(seriesExp);
-
-        const seriesWithInstances = [];
-        for (const s of orderedSeries) {
-          const r = await fetch(seriesInstancesEx(s.ID));
-          if (!r.ok) continue;
-          const instExp = await r.json();
-          const orderedInst = sortInstances(instExp);
-          if (orderedInst.length) {
-            const desc =
-              s?.MainDicomTags?.SeriesDescription ||
-              s?.MainDicomTags?.ProtocolName ||
-              `Serie ${seriesWithInstances.length + 1}`;
-            seriesWithInstances.push({
-              seriesId: s.ID,
-              description: desc,
-              instances: orderedInst,
-            });
-          }
-        }
-
-        if (!seriesWithInstances.length)
-          return console.warn("Sin instancias visibles");
-        seriesListRef.current = seriesWithInstances;
-        goTo(0, 0);
-      } catch (e) {
-        console.error("boot error", e);
-      }
-    };
-    boot();
+    if (!studyId) {
+      console.warn("Falta ?study=<StudyID>");
+    } else {
+      loadStudy(studyId);
+    }
 
     // Resize
     const ro = new ResizeObserver(() => {
@@ -332,9 +416,7 @@ export default function App() {
       evt.preventDefault();
 
       if (s.axis === "x") {
-        // Sentido corregido:
-        // derecha (dx > 0) -> siguiente instancia
-        // izquierda (dx < 0) -> instancia anterior
+        // derecha = siguiente instancia, izquierda = anterior
         s.accX += dx;
         while (Math.abs(s.accX) >= stepPxX) {
           if (s.accX > 0) stepInstance(+1);
@@ -343,21 +425,18 @@ export default function App() {
         }
         s.startX = t.clientX;
 
-        // --- auto-scroll en bordes ---
+        // auto-scroll en bordes
         const rect = el.getBoundingClientRect();
-        const margin = 24; // px desde el borde
+        const margin = 24;
         if (t.clientX >= rect.right - margin) {
-          // borde derecho -> avanzar continuamente
           startEdgeScroll(+1);
         } else if (t.clientX <= rect.left + margin) {
-          // borde izquierdo -> retroceder continuamente
           startEdgeScroll(-1);
         } else {
-          // dedo volvió a zona media
           startEdgeScroll(0);
         }
       } else {
-        // Eje vertical = cambia series
+        // eje vertical = cambia series
         s.accY += dy;
         while (Math.abs(s.accY) >= stepPxY) {
           if (s.accY > 0) stepSeries(-1);
@@ -365,7 +444,6 @@ export default function App() {
           s.accY += s.accY > 0 ? -stepPxY : stepPxY;
         }
         s.startY = t.clientY;
-        // si estamos en eje Y, aseguramos parar auto-scroll
         startEdgeScroll(0);
       }
     };
@@ -382,7 +460,7 @@ export default function App() {
       stopEdgeScroll();
     };
 
-    // Pointer: WL/WW, Pan, Zoom (según tool)
+    // Pointer: WL/WW, Pan, Zoom
     let wlDragStart = { x: 0, y: 0 };
 
     const onPointerDown = (evt) => {
@@ -454,7 +532,6 @@ export default function App() {
       } else if (tool === "zoom") {
         const { startY, baseScale } = zoomStateRef.current;
         const dy = evt.clientY - startY;
-        // dy hacia arriba -> zoom in, hacia abajo -> zoom out
         const factor = Math.exp(-dy * 0.01);
         const newScale = Math.max(0.1, Math.min(10, baseScale * factor));
 
@@ -482,7 +559,6 @@ export default function App() {
     window.addEventListener("pointerup", onPointerUp);
 
     return () => {
-      // apagar auto-scroll si quedaba algo vivo
       const st = edgeScrollRef.current;
       if (st.timerId) clearInterval(st.timerId);
       edgeScrollRef.current = { dir: 0, timerId: null };
@@ -507,10 +583,79 @@ export default function App() {
         } catch {}
       }
     };
-  }, []);
+  }, []); // sí, aquí ignoramos a loadStudy en deps, respira.
+
+  const REPORT_COLUMNA = `ESTUDIO COLUMNA
+
+Densidad ósea normal.
+La estatura de los cuerpos vertebrales y de los espacios intervertebrales está conservada.
+Hay rectificación de la lordosis lumbar fisiológica por espasmo muscular.
+Pedículos, arcos posteriores y articulaciones sacroilíacas normales.
+
+CONCLUSIÓN:
+- Espasmo muscular.`;
+
+  const REPORT_TOBILLO = `REPORTE ESTUDIO DE TOBILLO
+
+Estructuras óseas de densidad y morfología normales, no hay fracturas.
+Mortaja tibioperoneoastragalina con adecuada congruencia, espacios y superficies normales.
+No hay diástasis tibioperonea.
+Se aprecia aumento de tejidos blandos alrededor del maléolo externo.
+
+Conclusión:
+- Esguince de tobillo grado I`;
+
+  const getCurrentReport = () => {
+    if (!currentStudyMeta) return null;
+    const desc = (currentStudyMeta.description || "").toLowerCase();
+    if (desc.includes("columna")) return REPORT_COLUMNA;
+    if (desc.includes("tobillo")) return REPORT_TOBILLO;
+    return null;
+  };
+
+  const currentReport = getCurrentReport();
+
 
   return (
     <div className="page">
+      {/* Barra superior: paciente + lista de estudios */}
+    
+    <div className="topGroup">
+  <button
+    type="button"
+    className="topButton"
+    onClick={() => setShowPatientModal(true)}
+    disabled={!patientInfo}
+  >
+    {patientInfo ? patientInfo.name : "Paciente sin nombre"}
+  </button>
+
+  <button
+    type="button"
+    className="topButton"
+    onClick={() => setShowStudiesModal(true)}
+    disabled={!patientStudies.length}
+  >
+    Lista de estudios ({patientStudies.length || 0})
+  </button>
+
+  <button
+    type="button"
+    className="topButton"
+    onClick={() => setShowShareModal(true)}
+    disabled={!currentStudyMeta}
+  >
+    {currentStudyMeta ? (
+      <>
+        {currentStudyMeta.description}
+        {currentStudyMeta.date && <> · {formatDate(currentStudyMeta.date)}</>}
+      </>
+    ) : "Sin estudio seleccionado"}
+  </button>
+</div>
+
+
+      {/* Título por serie */}
       <h3 className="title" ref={titleRef}>
         Cargando...
       </h3>
@@ -543,7 +688,7 @@ export default function App() {
         role="toolbar"
         aria-label="Herramientas del visor"
       >
-        {/* 1. Navegar */}
+        {/* Navegar */}
         <button
           type="button"
           className={`toolButton ${activeTool === "navigate" ? "active" : ""}`}
@@ -556,7 +701,7 @@ export default function App() {
           </svg>
         </button>
 
-        {/* 2. Window/Level */}
+        {/* Window/Level */}
         <button
           type="button"
           className={`toolButton ${activeTool === "window" ? "active" : ""}`}
@@ -565,12 +710,11 @@ export default function App() {
           onClick={() => setActiveTool("window")}
         >
           <svg viewBox="0 0 24 24" className="toolIcon" aria-hidden="true">
-            {/* círculo con mitad sombreada */}
             <path d="M12 3a9 9 0 100 18 9 9 0 000-18zm0 2v14a7 7 0 010-14z" />
           </svg>
         </button>
 
-        {/* 3. Pan */}
+        {/* Pan */}
         <button
           type="button"
           className={`toolButton ${activeTool === "pan" ? "active" : ""}`}
@@ -583,7 +727,7 @@ export default function App() {
           </svg>
         </button>
 
-        {/* 4. Zoom */}
+        {/* Zoom */}
         <button
           type="button"
           className={`toolButton ${activeTool === "zoom" ? "active" : ""}`}
@@ -597,10 +741,187 @@ export default function App() {
         </button>
       </div>
 
+{/* Botón para mostrar reporte del estudio */}
+      <div className="bottomActions">
+        <button
+          type="button"
+          className="topButton"
+          disabled={!currentStudyMeta}
+          onClick={() => {
+            setShowReport(true);
+            setTimeout(() => {
+              window.scrollTo({
+                top: document.body.scrollHeight,
+                behavior: "smooth",
+              });
+            }, 0);
+          }}
+        >
+          Ver reporte del estudio
+        </button>
+      </div>
+
+      {/* Modal datos de paciente */}
+      {showPatientModal && patientInfo && (
+        <div
+          className="modalOverlay"
+          onClick={() => setShowPatientModal(false)}
+        >
+          <div className="modalCard" onClick={(e) => e.stopPropagation()}>
+            
+            <h4>Datos del paciente</h4>
+            <p>
+              <strong>Nombre:</strong> {patientInfo.name}
+            </p>
+            {patientInfo.patientId && (
+              <p>
+                <strong>ID:</strong> {patientInfo.patientId}
+              </p>
+            )}
+            {patientInfo.birthDate && (
+              <p>
+                <strong>Fecha de nacimiento:</strong>{" "}
+                {formatDate(patientInfo.birthDate)}
+              </p>
+            )}
+            {patientInfo.sex && (
+              <p>
+                <strong>Sexo:</strong> {patientInfo.sex}
+              </p>
+            )}
+            <button
+              type="button"
+              className="modalCloseBtn"
+              onClick={() => setShowPatientModal(false)}
+            >
+              Cerrar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal lista de estudios */}
+      {showStudiesModal && (
+        <div
+          className="modalOverlay"
+          onClick={() => setShowStudiesModal(false)}
+        >
+          <div className="modalCard" onClick={(e) => e.stopPropagation()}>
+            <h4>Estudios del paciente</h4>
+            <ul className="studyList">
+              {patientStudies.map((st) => (
+                <li key={st.id}>
+                  <button
+                    type="button"
+                    className="studyItemBtn"
+                    onClick={() => {
+                      setShowStudiesModal(false);
+                      loadStudy(st.id);
+                    }}
+                  >
+                    <span className="studyItemTitle">{st.description}</span>
+                    <span className="studyItemMeta">
+                      {st.modality && `${st.modality} · `}
+                      {st.date && formatDate(st.date)}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <button
+              type="button"
+              className="modalCloseBtn"
+              onClick={() => setShowStudiesModal(false)}
+            >
+              Cerrar
+            </button>
+          </div>
+        </div>
+      )}
+
+{/* Modal compartir estudio */}
+{showShareModal && currentStudyMeta && (
+  <div className="modalOverlay" onClick={() => setShowShareModal(false)}>
+    <div className="modalCard" onClick={(e) => e.stopPropagation()}>
+
+      <button
+    className="downloadIconBtn"
+    onClick={() => {
+      const url = `${ORTHANC_DOWNLOAD_BASE}/studies/${currentStudyMeta.id}/archive`;
+      window.open(url, "_blank");
+    }}
+  >
+    <svg viewBox="0 0 24 24" className="downloadIcon">
+          {/* barra inferior */}
+    <path d="M5 20h14v-2H5v2z" />
+    {/* flecha hacia abajo */}
+    <path d="M11 4v9.17L8.41 10.6 7 12l5 5 5-5-1.41-1.4L13 13.17V4h-2z" />
+    </svg>
+  </button>
+
+      <h4>Compartir estudio</h4>
+
+      <div className="qrContainer">
+        <img
+          src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(window.location.href)}`}
+          alt="QR del estudio"
+          className="qrImage"
+        />
+      </div>
+
+      <div className="shareButtons">
+        <a
+          href={`mailto:?subject=Estudio DICOM&body=${encodeURIComponent(
+            window.location.href
+          )}`}
+          className="shareBtn"
+        >
+          Enviar por correo
+        </a>
+
+        <a
+          href={`https://wa.me/?text=${encodeURIComponent(
+            window.location.href
+          )}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="shareBtn"
+        >
+          Compartir por WhatsApp
+        </a>
+      </div>
+
+      <button
+        type="button"
+        className="modalCloseBtn"
+        onClick={() => setShowShareModal(false)}
+      >
+        Cerrar
+      </button>
+    </div>
+  </div>
+)}
+
+      {showReport && (
+        <div className="reportBox">
+          <h4>Reporte del estudio</h4>
+          {currentReport ? (
+            <pre className="reportText">
+              {currentReport}
+            </pre>
+          ) : (
+            <p className="reportEmpty">
+              No hay reporte disponible para este estudio en el demo.
+            </p>
+          )}
+        </div>
+      )}
+
       <p className="footnote">
         ↑/↓ serie · ←/→ instancia · Swipe vertical = serie · Swipe horizontal =
         instancia (scrub continuo) · Hold en bordes = auto-scroll
       </p>
+
     </div>
   );
 }
