@@ -75,6 +75,16 @@ export default function App() {
   const titleRef = useRef(null);
   const counterRef = useRef(null);
 
+  const seriesCounterRef = useRef(null);    // <-- NUEVO: contador de series
+
+  // auto-scroll por botones (triángulos)
+  const btnScrollRef = useRef({
+    timerId: null,
+    delay: 220,
+    dir: 0,
+    type: null, // 'series' | 'instance'
+  });
+
   // header: paciente y estudios
   const [patientInfo, setPatientInfo] = useState(null);
   const [patientStudies, setPatientStudies] = useState([]); // historial
@@ -157,6 +167,15 @@ export default function App() {
       const i = iIdxRef.current + 1;
       const total = s.instances.length;
       if (counterRef.current) counterRef.current.textContent = `${i}/${total}`;
+
+// --- NUEVO: contador de series S / totalSeries ---
+      const totalSeries = seriesCount();
+      if (seriesCounterRef.current) {
+        const currentSeries = totalSeries ? sIdxRef.current + 1 : 0;
+        seriesCounterRef.current.textContent = `${currentSeries}/${totalSeries}`;
+      }
+
+
     } catch (e) {
       console.error("display error", imageId, e);
     }
@@ -184,6 +203,75 @@ export default function App() {
     const next = clamp(iIdxRef.current + delta, 0, n - 1);
     if (next !== iIdxRef.current) goTo(sIdxRef.current, next);
   };
+
+// --------- auto-scroll por triángulos (con aceleración) ----------
+  const stopButtonScroll = () => {
+    const st = btnScrollRef.current;
+    if (st.timerId) {
+      clearTimeout(st.timerId);
+      st.timerId = null;
+    }
+    st.dir = 0;
+    st.type = null;
+    st.delay = 220;
+  };
+
+  const runButtonStep = () => {
+    const st = btnScrollRef.current;
+    if (!st.type || !st.dir) return;
+
+    // solo funcionan en modo "navigate"
+    if (activeToolRef.current !== "navigate") {
+      stopButtonScroll();
+      return;
+    }
+
+    if (st.type === "series") {
+      stepSeries(st.dir);
+    } else if (st.type === "instance") {
+      stepInstance(st.dir);
+    }
+
+    // aceleración: cada vez disparamos más rápido hasta un mínimo
+    st.delay = Math.max(70, st.delay * 0.8);
+    st.timerId = setTimeout(runButtonStep, st.delay);
+  };
+
+  const startButtonScroll = (type, dir) => {
+    stopButtonScroll();
+    const st = btnScrollRef.current;
+    st.type = type;
+    st.dir = dir;
+    st.delay = 220;
+
+    // primer paso inmediato (tap corto = un paso, dejar presionado = varios)
+    runButtonStep();
+  };
+
+  const makeTriangleHandlers = (type, dir) => ({
+    onMouseDown: (e) => {
+      e.preventDefault();
+      startButtonScroll(type, dir);
+    },
+    onMouseUp: () => {
+      stopButtonScroll();
+    },
+    onMouseLeave: () => {
+      stopButtonScroll();
+    },
+    onTouchStart: (e) => {
+      e.preventDefault();
+      startButtonScroll(type, dir);
+    },
+    onTouchEnd: () => {
+      stopButtonScroll();
+    },
+    onTouchCancel: () => {
+      stopButtonScroll();
+    },
+  });
+
+
 
   // ----------- loadStudy: carga estudio + paciente + historial -----------
   const loadStudy = async (studyId) => {
@@ -245,16 +333,34 @@ export default function App() {
       const seriesExp = await sResp.json();
       const orderedSeries = sortSeries(seriesExp);
 
-      const seriesWithInstances = [];
+            const seriesWithInstances = [];
       for (const s of orderedSeries) {
+        const sTags = s.MainDicomTags || {};
+        const modality = sTags.Modality || "";
+
+        // 🔴 Filtrar SR a nivel de serie
+        if (modality === "SR") {
+          continue;
+        }
+
         const r = await fetch(seriesInstancesEx(s.ID));
         if (!r.ok) continue;
         const instExp = await r.json();
-        const orderedInst = sortInstances(instExp);
+
+        let orderedInst = sortInstances(instExp);
+
+        // (opcional pero más fino) filtrar SR a nivel de instancia por SOPClassUID
+        orderedInst = orderedInst.filter((inst) => {
+          const t = inst.MainDicomTags || {};
+          const sop = t.SOPClassUID || "";
+          // SR: SOPClassUID empieza con 1.2.840.10008.5.1.4.1.1.88.*
+          return !sop.startsWith("1.2.840.10008.5.1.4.1.1.88.");
+        });
+
         if (orderedInst.length) {
           const desc =
-            s?.MainDicomTags?.SeriesDescription ||
-            s?.MainDicomTags?.ProtocolName ||
+            sTags.SeriesDescription ||
+            sTags.ProtocolName ||
             `Serie ${seriesWithInstances.length + 1}`;
           seriesWithInstances.push({
             seriesId: s.ID,
@@ -263,6 +369,7 @@ export default function App() {
           });
         }
       }
+
 
       if (!seriesWithInstances.length) {
         console.warn("Sin instancias visibles");
@@ -559,10 +666,24 @@ export default function App() {
     window.addEventListener("pointerup", onPointerUp);
 
     return () => {
+      // limpiar auto-scroll por bordes (touch)
       const st = edgeScrollRef.current;
       if (st.timerId) clearInterval(st.timerId);
       edgeScrollRef.current = { dir: 0, timerId: null };
 
+      // limpiar auto-scroll por triángulos (botones)
+      const bt = btnScrollRef.current;
+      if (bt.timerId) {
+        clearTimeout(bt.timerId);
+      }
+      btnScrollRef.current = {
+        timerId: null,
+        delay: 220,
+        dir: 0,
+        type: null,
+      };
+
+      // resto del cleanup que ya tenías
       try {
         ro.disconnect();
       } catch {}
@@ -583,6 +704,9 @@ export default function App() {
         } catch {}
       }
     };
+
+
+
   }, []); // sí, aquí ignoramos a loadStudy en deps, respira.
 
   const REPORT_COLUMNA = `ESTUDIO COLUMNA
@@ -660,7 +784,34 @@ Conclusión:
         Cargando...
       </h3>
 
-      <div className="viewportBox">
+            <div className="viewportBox">
+        {/* Triángulos verdes */}
+        <button
+          type="button"
+          className="vp-triangle vp-triangle-top"
+          {...makeTriangleHandlers("series", +1)}   // serie siguiente
+          aria-label="Serie siguiente"
+        />
+        <button
+          type="button"
+          className="vp-triangle vp-triangle-bottom"
+          {...makeTriangleHandlers("series", -1)}   // serie anterior
+          aria-label="Serie anterior"
+        />
+        <button
+          type="button"
+          className="vp-triangle vp-triangle-left"
+          {...makeTriangleHandlers("instance", -1)} // instancia anterior
+          aria-label="Instancia anterior"
+        />
+        <button
+          type="button"
+          className="vp-triangle vp-triangle-right"
+          {...makeTriangleHandlers("instance", +1)} // instancia siguiente
+          aria-label="Instancia siguiente"
+        />
+
+        {/* Viewport DICOM */}
         <div
           ref={viewportRef}
           className={`viewport ${
@@ -673,6 +824,8 @@ Conclusión:
               : ""
           }`}
         />
+
+        {/* Contador de instancias (derecha abajo) */}
         <div
           ref={counterRef}
           className="vp-counter"
@@ -680,7 +833,19 @@ Conclusión:
         >
           0/0
         </div>
+
+        {/* NUEVO: Contador de series (izquierda abajo) */}
+        <div
+          ref={seriesCounterRef}
+          className="vp-series-counter"
+          aria-label="series-counter"
+        >
+          0/0
+        </div>
       </div>
+
+
+
 
       {/* Toolbar */}
       <div

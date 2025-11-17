@@ -408,3 +408,74 @@ html, body, #root {
   color: #9ca3af;
 }
 
+/* Asegurar que el contenedor pueda posicionar cosas encima */
+.viewportBox {
+  position: relative;
+  display: inline-block;
+}
+
+/* Contador de instancias (ya lo tienes, solo para referencia) */
+/* .vp-counter { ... } */
+
+/* Contador de series: esquina inferior izquierda */
+.vp-series-counter {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  padding: 2px 6px;
+  font-size: 0.75rem;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.7);
+  color: #c8ffd8;
+  pointer-events: none;
+}
+
+/* Triángulos verdes */
+.vp-triangle {
+  position: absolute;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  cursor: pointer;
+  z-index: 20;
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+}
+
+/* Arriba (triángulo apuntando hacia arriba, sobre el viewport) */
+.vp-triangle-top {
+  border-width: 0 8px 10px 8px;                 /* base abajo */
+  border-color: transparent transparent #3dd45a transparent;
+  top: -4px;                                    /* ARRIBA del viewport */
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+/* Abajo (triángulo apuntando hacia abajo, bajo el viewport) */
+.vp-triangle-bottom {
+  border-width: 10px 8px 0 8px;                 /* base arriba */
+  border-color: #3dd45a transparent transparent transparent;
+  bottom: -4px;                                 /* ABAJO del viewport */
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+
+/* Izquierda (apunta hacia la izquierda) */
+.vp-triangle-left {
+  border-width: 8px 10px 8px 0;
+  border-color: transparent #3dd45a transparent transparent;
+  left: -4px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* Derecha (apunta hacia la derecha) */
+.vp-triangle-right {
+  border-width: 8px 0 8px 10px;
+  border-color: transparent transparent transparent #3dd45a;
+  right: -4px;
+  top: 50%;
+  transform: translateY(-50%);
+}
