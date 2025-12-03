@@ -5,12 +5,15 @@ import cornerstoneWADOImageLoader from "cornerstone-wado-image-loader";
 import { cornerstone } from "./cornerstoneConfig";
 import "./App.css";
 
-const BASE = "";
+const ORTHANC_BASE =
+  process.env.REACT_APP_ORTHANC_BASE || "https://dcm.morisportal.com/orthanc";
+
+const BASE = ORTHANC_BASE;
 
 // Orthanc directo para descargas (ajusta host/puerto a tu entorno)
-const ORTHANC_DOWNLOAD_BASE =
+const ORTHANC_DOWNLOAD_BASE = ORTHANC_BASE;
   //process.env.REACT_APP_ORTHANC_BASE || "http://168.243.238.18:5172/";
-  process.env.REACT_APP_ORTHANC_BASE || "https://dcm.morisportal.com/orthanc/";
+  //process.env.REACT_APP_ORTHANC_BASE || "https://dcm.morisportal.com/orthanc/";
 
 const wadouriFromInstanceId = (id) =>
   `wadouri:${BASE}/instances/${id}/file?contentType=application/dicom`;
