@@ -9,7 +9,8 @@ const BASE = "";
 
 // Orthanc directo para descargas (ajusta host/puerto a tu entorno)
 const ORTHANC_DOWNLOAD_BASE =
-  process.env.REACT_APP_ORTHANC_BASE || "http://168.243.238.18:5172/";
+  //process.env.REACT_APP_ORTHANC_BASE || "http://168.243.238.18:5172/";
+  process.env.REACT_APP_ORTHANC_BASE || "https://dcm.morisportal.com/orthanc/";
 
 const wadouriFromInstanceId = (id) =>
   `wadouri:${BASE}/instances/${id}/file?contentType=application/dicom`;
