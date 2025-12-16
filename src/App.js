@@ -6,7 +6,7 @@ import { cornerstone } from "./cornerstoneConfig";
 import "./App.css";
 
 const ORTHANC_BASE =
-  process.env.REACT_APP_ORTHANC_BASE || "https://dcm.morisportal.com/orthanc";
+  process.env.REACT_APP_ORTHANC_BASE || "https://testdcm.morisportal.com:50443/orthanc/";
 
 const BASE = ORTHANC_BASE;
 
