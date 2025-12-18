@@ -8,7 +8,8 @@ import StudyList from "./StudyList";
 
 const ORTHANC_BASE =
   process.env.REACT_APP_ORTHANC_BASE ||
-  "https://testdcm.morisportal.com:50443/orthanc/";
+  //"https://testdcm.morisportal.com:50443/orthanc/";
+  "https://dcm.morisportal.com/orthanc/";
 
 const BASE = ORTHANC_BASE;
 const ORTHANC_DOWNLOAD_BASE = ORTHANC_BASE;

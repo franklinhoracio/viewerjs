@@ -8,7 +8,8 @@ const ORTHANC_BASE =
     import.meta.env &&
     import.meta.env.VITE_ORTHANC_BASE) ||
   process.env.REACT_APP_ORTHANC_BASE ||
-  "https://testdcm.morisportal.com:50443/orthanc/";
+  //"https://testdcm.morisportal.com:50443/orthanc/";
+  "https://dcm.morisportal.com/orthanc/";
 
 // Normaliza para que SIEMPRE termine con "/"
 const normalizeOrthancBase = (base) => {
