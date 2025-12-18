@@ -4,16 +4,14 @@ import dicomParser from "dicom-parser";
 import cornerstoneWADOImageLoader from "cornerstone-wado-image-loader";
 import { cornerstone } from "./cornerstoneConfig";
 import "./App.css";
+import StudyList from "./StudyList";
 
 const ORTHANC_BASE =
-  process.env.REACT_APP_ORTHANC_BASE || "https://testdcm.morisportal.com:50443/orthanc/";
+  process.env.REACT_APP_ORTHANC_BASE ||
+  "https://testdcm.morisportal.com:50443/orthanc/";
 
 const BASE = ORTHANC_BASE;
-
-// Orthanc directo para descargas (ajusta host/puerto a tu entorno)
 const ORTHANC_DOWNLOAD_BASE = ORTHANC_BASE;
-  //process.env.REACT_APP_ORTHANC_BASE || "http://168.243.238.18:5172/";
-  //process.env.REACT_APP_ORTHANC_BASE || "https://dcm.morisportal.com/orthanc/";
 
 const wadouriFromInstanceId = (id) =>
   `wadouri:${BASE}/instances/${id}/file?contentType=application/dicom`;
@@ -75,11 +73,16 @@ const formatDate = (yyyymmdd) => {
 };
 
 export default function App() {
+  // --- router mini por query ---
+  const params = new URLSearchParams(window.location.search);
+  const page = params.get("page");
+  const isStudyList = page === "study_list";
+  const studyIdFromUrl = params.get("study");
+
   const viewportRef = useRef(null);
   const titleRef = useRef(null);
   const counterRef = useRef(null);
-
-  const seriesCounterRef = useRef(null);    // <-- NUEVO: contador de series
+  const seriesCounterRef = useRef(null);
 
   // auto-scroll por botones (triángulos)
   const btnScrollRef = useRef({
@@ -138,7 +141,7 @@ export default function App() {
 
   // auto-scroll en bordes (instancias)
   const edgeScrollRef = useRef({
-    dir: 0,        // -1 izquierda, +1 derecha
+    dir: 0, // -1 izquierda, +1 derecha
     timerId: null, // setInterval id
   });
 
@@ -172,14 +175,12 @@ export default function App() {
       const total = s.instances.length;
       if (counterRef.current) counterRef.current.textContent = `${i}/${total}`;
 
-// --- NUEVO: contador de series S / totalSeries ---
+      // contador series
       const totalSeries = seriesCount();
       if (seriesCounterRef.current) {
         const currentSeries = totalSeries ? sIdxRef.current + 1 : 0;
         seriesCounterRef.current.textContent = `${currentSeries}/${totalSeries}`;
       }
-
-
     } catch (e) {
       console.error("display error", imageId, e);
     }
@@ -208,7 +209,7 @@ export default function App() {
     if (next !== iIdxRef.current) goTo(sIdxRef.current, next);
   };
 
-// --------- auto-scroll por triángulos (con aceleración) ----------
+  // --------- auto-scroll por triángulos (con aceleración) ----------
   const stopButtonScroll = () => {
     const st = btnScrollRef.current;
     if (st.timerId) {
@@ -230,13 +231,10 @@ export default function App() {
       return;
     }
 
-    if (st.type === "series") {
-      stepSeries(st.dir);
-    } else if (st.type === "instance") {
-      stepInstance(st.dir);
-    }
+    if (st.type === "series") stepSeries(st.dir);
+    else if (st.type === "instance") stepInstance(st.dir);
 
-    // aceleración: cada vez disparamos más rápido hasta un mínimo
+    // aceleración
     st.delay = Math.max(70, st.delay * 0.8);
     st.timerId = setTimeout(runButtonStep, st.delay);
   };
@@ -248,7 +246,7 @@ export default function App() {
     st.dir = dir;
     st.delay = 220;
 
-    // primer paso inmediato (tap corto = un paso, dejar presionado = varios)
+    // primer paso inmediato
     runButtonStep();
   };
 
@@ -257,25 +255,15 @@ export default function App() {
       e.preventDefault();
       startButtonScroll(type, dir);
     },
-    onMouseUp: () => {
-      stopButtonScroll();
-    },
-    onMouseLeave: () => {
-      stopButtonScroll();
-    },
+    onMouseUp: stopButtonScroll,
+    onMouseLeave: stopButtonScroll,
     onTouchStart: (e) => {
       e.preventDefault();
       startButtonScroll(type, dir);
     },
-    onTouchEnd: () => {
-      stopButtonScroll();
-    },
-    onTouchCancel: () => {
-      stopButtonScroll();
-    },
+    onTouchEnd: stopButtonScroll,
+    onTouchCancel: stopButtonScroll,
   });
-
-
 
   // ----------- loadStudy: carga estudio + paciente + historial -----------
   const loadStudy = async (studyId) => {
@@ -297,12 +285,10 @@ export default function App() {
       // 2) Paciente + estudios del paciente
       const patientId = studyJson.ParentPatient;
       if (patientId) {
-        // datos de paciente
         const pResp = await fetch(`${BASE}/patients/${patientId}`);
         if (pResp.ok) {
           const pJson = await pResp.json();
-          const pTags =
-            pJson.PatientMainDicomTags || pJson.MainDicomTags || {};
+          const pTags = pJson.PatientMainDicomTags || pJson.MainDicomTags || {};
           setPatientInfo({
             id: patientId,
             name: pTags.PatientName || "Paciente sin nombre",
@@ -312,7 +298,6 @@ export default function App() {
           });
         }
 
-        // lista de estudios del paciente
         const listResp = await fetch(
           `${BASE}/patients/${patientId}/studies?expand=true`
         );
@@ -337,15 +322,13 @@ export default function App() {
       const seriesExp = await sResp.json();
       const orderedSeries = sortSeries(seriesExp);
 
-            const seriesWithInstances = [];
+      const seriesWithInstances = [];
       for (const s of orderedSeries) {
         const sTags = s.MainDicomTags || {};
         const modality = sTags.Modality || "";
 
-        // 🔴 Filtrar SR a nivel de serie
-        if (modality === "SR") {
-          continue;
-        }
+        // Filtrar SR a nivel de serie
+        if (modality === "SR") continue;
 
         const r = await fetch(seriesInstancesEx(s.ID));
         if (!r.ok) continue;
@@ -353,11 +336,10 @@ export default function App() {
 
         let orderedInst = sortInstances(instExp);
 
-        // (opcional pero más fino) filtrar SR a nivel de instancia por SOPClassUID
+        // filtrar SR por SOPClassUID
         orderedInst = orderedInst.filter((inst) => {
           const t = inst.MainDicomTags || {};
           const sop = t.SOPClassUID || "";
-          // SR: SOPClassUID empieza con 1.2.840.10008.5.1.4.1.1.88.*
           return !sop.startsWith("1.2.840.10008.5.1.4.1.1.88.");
         });
 
@@ -374,11 +356,11 @@ export default function App() {
         }
       }
 
-
       if (!seriesWithInstances.length) {
         console.warn("Sin instancias visibles");
         return;
       }
+
       seriesListRef.current = seriesWithInstances;
       sIdxRef.current = 0;
       iIdxRef.current = 0;
@@ -388,7 +370,10 @@ export default function App() {
     }
   };
 
+  // -------- Visor: init / listeners / resize / loadStudy --------
   useEffect(() => {
+    if (isStudyList) return; // modo lista: no tocar cornerstone
+
     // Bridge
     cornerstoneWADOImageLoader.external.cornerstone = cornerstone;
     cornerstoneWADOImageLoader.external.dicomParser = dicomParser;
@@ -408,20 +393,22 @@ export default function App() {
     });
 
     const el = viewportRef.current;
+    if (!el) return;
+
     try {
       cornerstone.enable(el);
     } catch {}
 
-    // viewport focus para teclas
+    // focus para teclas
     try {
       el.setAttribute("tabindex", "0");
       el.focus({ preventScroll: true });
     } catch {}
 
-    // helpers para auto-scroll de instancias
+    // helpers para auto-scroll de instancias (touch edges)
     const startEdgeScroll = (dir) => {
       const state = edgeScrollRef.current;
-      if (state.dir === dir) return; // ya está
+      if (state.dir === dir) return;
       state.dir = dir;
       if (state.timerId) clearInterval(state.timerId);
       if (dir === 0) {
@@ -429,10 +416,9 @@ export default function App() {
         return;
       }
       state.timerId = setInterval(() => {
-        // auto-avance mientras siga en navigate
         if (activeToolRef.current !== "navigate") return;
         stepInstance(dir);
-      }, 90); // velocidad del carrusel
+      }, 90);
     };
 
     const stopEdgeScroll = () => {
@@ -445,20 +431,20 @@ export default function App() {
     };
 
     // Cargar estudio inicial desde ?study=
-    const studyId = new URLSearchParams(window.location.search).get("study");
-    if (!studyId) {
+    if (!studyIdFromUrl) {
       console.warn("Falta ?study=<StudyID>");
     } else {
-      loadStudy(studyId);
+      loadStudy(studyIdFromUrl);
     }
 
-    // Resize
+    // ResizeObserver
     const ro = new ResizeObserver(() => {
       try {
         cornerstone.resize(el, true);
       } catch {}
     });
     ro.observe(el);
+
     const onWinResize = () => {
       try {
         cornerstone.resize(el, true);
@@ -466,7 +452,7 @@ export default function App() {
     };
     window.addEventListener("resize", onWinResize);
 
-    // Navegación (solo en modo navigate)
+    // Navegación (solo navigate)
     const onWheel = (evt) => {
       if (activeToolRef.current !== "navigate") return;
       evt.preventDefault();
@@ -480,19 +466,16 @@ export default function App() {
 
     const onKey = (evt) => {
       if (activeToolRef.current !== "navigate") return;
-      if (
-        ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(
-          evt.key
-        )
-      )
+      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(evt.key)) {
         evt.preventDefault();
+      }
       if (evt.key === "ArrowDown") stepSeries(+1);
       else if (evt.key === "ArrowUp") stepSeries(-1);
       else if (evt.key === "ArrowRight") stepInstance(+1);
       else if (evt.key === "ArrowLeft") stepInstance(-1);
     };
 
-    // Touch scrub navegación + auto-scroll en bordes
+    // Touch scrub + edge autoscroll
     const stepPxX = 40;
     const stepPxY = 60;
 
@@ -527,7 +510,6 @@ export default function App() {
       evt.preventDefault();
 
       if (s.axis === "x") {
-        // derecha = siguiente instancia, izquierda = anterior
         s.accX += dx;
         while (Math.abs(s.accX) >= stepPxX) {
           if (s.accX > 0) stepInstance(+1);
@@ -536,18 +518,12 @@ export default function App() {
         }
         s.startX = t.clientX;
 
-        // auto-scroll en bordes
         const rect = el.getBoundingClientRect();
         const margin = 24;
-        if (t.clientX >= rect.right - margin) {
-          startEdgeScroll(+1);
-        } else if (t.clientX <= rect.left + margin) {
-          startEdgeScroll(-1);
-        } else {
-          startEdgeScroll(0);
-        }
+        if (t.clientX >= rect.right - margin) startEdgeScroll(+1);
+        else if (t.clientX <= rect.left + margin) startEdgeScroll(-1);
+        else startEdgeScroll(0);
       } else {
-        // eje vertical = cambia series
         s.accY += dy;
         while (Math.abs(s.accY) >= stepPxY) {
           if (s.accY > 0) stepSeries(-1);
@@ -670,28 +646,14 @@ export default function App() {
     window.addEventListener("pointerup", onPointerUp);
 
     return () => {
-      // limpiar auto-scroll por bordes (touch)
-      const st = edgeScrollRef.current;
-      if (st.timerId) clearInterval(st.timerId);
-      edgeScrollRef.current = { dir: 0, timerId: null };
+      stopEdgeScroll();
+      stopButtonScroll();
 
-      // limpiar auto-scroll por triángulos (botones)
-      const bt = btnScrollRef.current;
-      if (bt.timerId) {
-        clearTimeout(bt.timerId);
-      }
-      btnScrollRef.current = {
-        timerId: null,
-        delay: 220,
-        dir: 0,
-        type: null,
-      };
-
-      // resto del cleanup que ya tenías
       try {
         ro.disconnect();
       } catch {}
       window.removeEventListener("resize", onWinResize);
+
       if (el) {
         el.removeEventListener("wheel", onWheel);
         el.removeEventListener("keydown", onKey);
@@ -709,10 +671,10 @@ export default function App() {
       }
     };
 
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isStudyList, studyIdFromUrl]);
 
-
-  }, []); // sí, aquí ignoramos a loadStudy en deps, respira.
-
+  // -------- Reportes demo --------
   const REPORT_COLUMNA = `ESTUDIO COLUMNA
 
 Densidad ósea normal.
@@ -743,75 +705,99 @@ Conclusión:
 
   const currentReport = getCurrentReport();
 
+  // ✅ Render: si es lista, mostramos lista. Si no, visor.
+  if (isStudyList) {
+    return (
+      <StudyList
+        orthancBase={BASE}
+        onOpenStudy={(id) => {
+          window.location.href = `${window.location.pathname}?study=${encodeURIComponent(
+            id
+          )}`;
+        }}
+      />
+    );
+  }
 
   return (
     <div className="page">
-      {/* Barra superior: paciente + lista de estudios */}
-    
-    <div className="topGroup">
-  <button
-    type="button"
-    className="topButton"
-    onClick={() => setShowPatientModal(true)}
-    disabled={!patientInfo}
-  >
-    {patientInfo ? patientInfo.name : "Paciente sin nombre"}
-  </button>
+      {/* Barra superior: paciente + lista de estudios + share */}
+      <div className="topGroup">
+        <button
+          type="button"
+          className="topButton"
+          onClick={() => setShowPatientModal(true)}
+          disabled={!patientInfo}
+        >
+          {patientInfo ? patientInfo.name : "Paciente sin nombre"}
+        </button>
 
-  <button
-    type="button"
-    className="topButton"
-    onClick={() => setShowStudiesModal(true)}
-    disabled={!patientStudies.length}
-  >
-    Lista de estudios ({patientStudies.length || 0})
-  </button>
+        <button
+          type="button"
+          className="topButton"
+          onClick={() => setShowStudiesModal(true)}
+          disabled={!patientStudies.length}
+        >
+          Lista de estudios ({patientStudies.length || 0})
+        </button>
 
-  <button
-    type="button"
-    className="topButton"
-    onClick={() => setShowShareModal(true)}
-    disabled={!currentStudyMeta}
-  >
-    {currentStudyMeta ? (
-      <>
-        {currentStudyMeta.description}
-        {currentStudyMeta.date && <> · {formatDate(currentStudyMeta.date)}</>}
-      </>
-    ) : "Sin estudio seleccionado"}
-  </button>
-</div>
+        <button
+          type="button"
+          className="topButton"
+          onClick={() => setShowShareModal(true)}
+          disabled={!currentStudyMeta}
+        >
+          {currentStudyMeta ? (
+            <>
+              {currentStudyMeta.description}
+              {currentStudyMeta.date && <> · {formatDate(currentStudyMeta.date)}</>}
+            </>
+          ) : (
+            "Sin estudio seleccionado"
+          )}
+        </button>
 
+        {/* Botón para ir a la lista */}
+        <button
+          type="button"
+          className="topButton"
+          onClick={() => {
+            window.location.href = `${window.location.pathname}?page=study_list`;
+          }}
+        >
+          Study List
+        </button>
+      </div>
 
       {/* Título por serie */}
       <h3 className="title" ref={titleRef}>
         Cargando...
       </h3>
 
-            <div className="viewportBox">
-        {/* Triángulos verdes */}
+      <div className="viewportBox">
+        {/* Triángulos */}
         <button
           type="button"
           className="vp-triangle vp-triangle-top"
-          {...makeTriangleHandlers("series", +1)}   // serie siguiente
+          {...makeTriangleHandlers("series", +1)}
           aria-label="Serie siguiente"
         />
         <button
           type="button"
           className="vp-triangle vp-triangle-bottom"
-          {...makeTriangleHandlers("series", -1)}   // serie anterior
+          {...makeTriangleHandlers("series", -1)}
           aria-label="Serie anterior"
         />
         <button
           type="button"
           className="vp-triangle vp-triangle-left"
-          {...makeTriangleHandlers("instance", -1)} // instancia anterior
+          {...makeTriangleHandlers("instance", -1)}
           aria-label="Instancia anterior"
         />
         <button
           type="button"
           className="vp-triangle vp-triangle-right"
-          {...makeTriangleHandlers("instance", +1)} // instancia siguiente
+          {...makeTriangleHandlers("instance", +1)}
           aria-label="Instancia siguiente"
         />
 
@@ -829,16 +815,12 @@ Conclusión:
           }`}
         />
 
-        {/* Contador de instancias (derecha abajo) */}
-        <div
-          ref={counterRef}
-          className="vp-counter"
-          aria-label="instance-counter"
-        >
+        {/* Contador instancias */}
+        <div ref={counterRef} className="vp-counter" aria-label="instance-counter">
           0/0
         </div>
 
-        {/* NUEVO: Contador de series (izquierda abajo) */}
+        {/* Contador series */}
         <div
           ref={seriesCounterRef}
           className="vp-series-counter"
@@ -848,21 +830,13 @@ Conclusión:
         </div>
       </div>
 
-
-
-
       {/* Toolbar */}
-      <div
-        className="viewportToolbar"
-        role="toolbar"
-        aria-label="Herramientas del visor"
-      >
-        {/* Navegar */}
+      <div className="viewportToolbar" role="toolbar" aria-label="Herramientas del visor">
         <button
           type="button"
           className={`toolButton ${activeTool === "navigate" ? "active" : ""}`}
           aria-pressed={activeTool === "navigate"}
-          title="Navegar (series e instancias)"
+          title="Navegar"
           onClick={() => setActiveTool("navigate")}
         >
           <svg viewBox="0 0 24 24" className="toolIcon" aria-hidden="true">
@@ -870,12 +844,11 @@ Conclusión:
           </svg>
         </button>
 
-        {/* Window/Level */}
         <button
           type="button"
           className={`toolButton ${activeTool === "window" ? "active" : ""}`}
           aria-pressed={activeTool === "window"}
-          title="Brillo/Contraste (WL/WW)"
+          title="Brillo/Contraste"
           onClick={() => setActiveTool("window")}
         >
           <svg viewBox="0 0 24 24" className="toolIcon" aria-hidden="true">
@@ -883,7 +856,6 @@ Conclusión:
           </svg>
         </button>
 
-        {/* Pan */}
         <button
           type="button"
           className={`toolButton ${activeTool === "pan" ? "active" : ""}`}
@@ -896,7 +868,6 @@ Conclusión:
           </svg>
         </button>
 
-        {/* Zoom */}
         <button
           type="button"
           className={`toolButton ${activeTool === "zoom" ? "active" : ""}`}
@@ -910,7 +881,7 @@ Conclusión:
         </button>
       </div>
 
-{/* Botón para mostrar reporte del estudio */}
+      {/* Botón reporte */}
       <div className="bottomActions">
         <button
           type="button"
@@ -930,14 +901,10 @@ Conclusión:
         </button>
       </div>
 
-      {/* Modal datos de paciente */}
+      {/* Modal paciente */}
       {showPatientModal && patientInfo && (
-        <div
-          className="modalOverlay"
-          onClick={() => setShowPatientModal(false)}
-        >
+        <div className="modalOverlay" onClick={() => setShowPatientModal(false)}>
           <div className="modalCard" onClick={(e) => e.stopPropagation()}>
-            
             <h4>Datos del paciente</h4>
             <p>
               <strong>Nombre:</strong> {patientInfo.name}
@@ -949,8 +916,7 @@ Conclusión:
             )}
             {patientInfo.birthDate && (
               <p>
-                <strong>Fecha de nacimiento:</strong>{" "}
-                {formatDate(patientInfo.birthDate)}
+                <strong>Fecha de nacimiento:</strong> {formatDate(patientInfo.birthDate)}
               </p>
             )}
             {patientInfo.sex && (
@@ -969,12 +935,9 @@ Conclusión:
         </div>
       )}
 
-      {/* Modal lista de estudios */}
+      {/* Modal lista de estudios del paciente */}
       {showStudiesModal && (
-        <div
-          className="modalOverlay"
-          onClick={() => setShowStudiesModal(false)}
-        >
+        <div className="modalOverlay" onClick={() => setShowStudiesModal(false)}>
           <div className="modalCard" onClick={(e) => e.stopPropagation()}>
             <h4>Estudios del paciente</h4>
             <ul className="studyList">
@@ -986,6 +949,12 @@ Conclusión:
                     onClick={() => {
                       setShowStudiesModal(false);
                       loadStudy(st.id);
+                      // y actualiza URL para que el link sea estable
+                      window.history.replaceState(
+                        null,
+                        "",
+                        `${window.location.pathname}?study=${encodeURIComponent(st.id)}`
+                      );
                     }}
                   >
                     <span className="studyItemTitle">{st.description}</span>
@@ -1008,76 +977,73 @@ Conclusión:
         </div>
       )}
 
-{/* Modal compartir estudio */}
-{showShareModal && currentStudyMeta && (
-  <div className="modalOverlay" onClick={() => setShowShareModal(false)}>
-    <div className="modalCard" onClick={(e) => e.stopPropagation()}>
+      {/* Modal compartir */}
+      {showShareModal && currentStudyMeta && (
+        <div className="modalOverlay" onClick={() => setShowShareModal(false)}>
+          <div className="modalCard" onClick={(e) => e.stopPropagation()}>
+            <button
+              className="downloadIconBtn"
+              onClick={() => {
+                const url = `${ORTHANC_DOWNLOAD_BASE}/studies/${currentStudyMeta.id}/archive`;
+                window.open(url, "_blank");
+              }}
+              title="Descargar estudio"
+            >
+              <svg viewBox="0 0 24 24" className="downloadIcon">
+                <path d="M5 20h14v-2H5v2z" />
+                <path d="M11 4v9.17L8.41 10.6 7 12l5 5 5-5-1.41-1.4L13 13.17V4h-2z" />
+              </svg>
+            </button>
 
-      <button
-    className="downloadIconBtn"
-    onClick={() => {
-      const url = `${ORTHANC_DOWNLOAD_BASE}/studies/${currentStudyMeta.id}/archive`;
-      window.open(url, "_blank");
-    }}
-  >
-    <svg viewBox="0 0 24 24" className="downloadIcon">
-          {/* barra inferior */}
-    <path d="M5 20h14v-2H5v2z" />
-    {/* flecha hacia abajo */}
-    <path d="M11 4v9.17L8.41 10.6 7 12l5 5 5-5-1.41-1.4L13 13.17V4h-2z" />
-    </svg>
-  </button>
+            <h4>Compartir estudio</h4>
 
-      <h4>Compartir estudio</h4>
+            <div className="qrContainer">
+              <img
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(
+                  window.location.href
+                )}`}
+                alt="QR del estudio"
+                className="qrImage"
+              />
+            </div>
 
-      <div className="qrContainer">
-        <img
-          src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(window.location.href)}`}
-          alt="QR del estudio"
-          className="qrImage"
-        />
-      </div>
+            <div className="shareButtons">
+              <a
+                href={`mailto:?subject=Estudio DICOM&body=${encodeURIComponent(
+                  window.location.href
+                )}`}
+                className="shareBtn"
+              >
+                Enviar por correo
+              </a>
 
-      <div className="shareButtons">
-        <a
-          href={`mailto:?subject=Estudio DICOM&body=${encodeURIComponent(
-            window.location.href
-          )}`}
-          className="shareBtn"
-        >
-          Enviar por correo
-        </a>
+              <a
+                href={`https://wa.me/?text=${encodeURIComponent(window.location.href)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="shareBtn"
+              >
+                Compartir por WhatsApp
+              </a>
+            </div>
 
-        <a
-          href={`https://wa.me/?text=${encodeURIComponent(
-            window.location.href
-          )}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="shareBtn"
-        >
-          Compartir por WhatsApp
-        </a>
-      </div>
+            <button
+              type="button"
+              className="modalCloseBtn"
+              onClick={() => setShowShareModal(false)}
+            >
+              Cerrar
+            </button>
+          </div>
+        </div>
+      )}
 
-      <button
-        type="button"
-        className="modalCloseBtn"
-        onClick={() => setShowShareModal(false)}
-      >
-        Cerrar
-      </button>
-    </div>
-  </div>
-)}
-
+      {/* Reporte demo */}
       {showReport && (
         <div className="reportBox">
           <h4>Reporte del estudio</h4>
           {currentReport ? (
-            <pre className="reportText">
-              {currentReport}
-            </pre>
+            <pre className="reportText">{currentReport}</pre>
           ) : (
             <p className="reportEmpty">
               No hay reporte disponible para este estudio en el demo.
@@ -1087,10 +1053,9 @@ Conclusión:
       )}
 
       <p className="footnote">
-        ↑/↓ serie · ←/→ instancia · Swipe vertical = serie · Swipe horizontal =
-        instancia (scrub continuo) · Hold en bordes = auto-scroll
+        ↑/↓ serie · ←/→ instancia · Swipe vertical = serie · Swipe horizontal = instancia
+        (scrub continuo) · Hold en bordes = auto-scroll
       </p>
-
     </div>
   );
 }
