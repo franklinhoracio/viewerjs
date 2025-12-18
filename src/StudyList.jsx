@@ -18,92 +18,103 @@ const normalizeOrthancBase = (base) => {
   return b;
 };
 
-const BASE = normalizeOrthancBase(ORTHANC_BASE);
-
-// Utils
-const pad2 = (n) => String(n).padStart(2, "0");
-
-const toYYYYMMDD = (yyyy_mm_dd) => {
-  if (!yyyy_mm_dd) return "";
-  const s = String(yyyy_mm_dd).trim();
-  if (/^\d{8}$/.test(s)) return s;
+// Convierte "YYYY-MM-DD" => "YYYYMMDD"
+const toYYYYMMDD = (inputDate) => {
+  if (!inputDate) return "";
+  const s = String(inputDate).trim();
   const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!m) return "";
   return `${m[1]}${m[2]}${m[3]}`;
 };
 
-const toInputDate = (d = new Date()) => {
-  const y = d.getFullYear();
-  const m = pad2(d.getMonth() + 1);
-  const day = pad2(d.getDate());
-  return `${y}-${m}-${day}`;
-};
-
+// Convierte "YYYYMMDD" => "DD/MM/YYYY"
 const formatDateDDMMYYYY = (yyyymmdd) => {
-  if (!yyyymmdd || String(yyyymmdd).length !== 8) return "";
-  const s = String(yyyymmdd);
+  const s = String(yyyymmdd || "");
+  if (!/^\d{8}$/.test(s)) return "";
   return `${s.slice(6, 8)}/${s.slice(4, 6)}/${s.slice(0, 4)}`;
 };
 
-const safe = (v, fallback = "") =>
-  v == null || v === "" ? fallback : String(v);
-
-/**
- * POST JSON a Orthanc SIN Content-Type para evitar preflight (CORS).
- * Esto suele arreglar el "NetworkError when attempting to fetch resource."
- */
-async function postJsonNoPreflight(url, payload) {
-  const resp = await fetch(url, {
+// POST JSON sin preflight (para evitar CORS cuando el server no permite OPTIONS)
+// Usa text/plain pero envía JSON real.
+const postJsonNoPreflight = async (url, bodyObj) => {
+  return fetch(url, {
     method: "POST",
-    // NO headers -> el browser manda text/plain;charset=UTF-8 (simple request)
-    body: JSON.stringify(payload),
+    headers: { "Content-Type": "text/plain;charset=UTF-8" },
+    body: JSON.stringify(bodyObj),
   });
-  return resp;
-}
+};
 
-export default function StudyList({ onOpenStudy }) {
-  const [dateInput, setDateInput] = useState(toInputDate());
+export default function StudyList() {
+  const BASE = normalizeOrthancBase(ORTHANC_BASE);
+
+  // Por defecto vacío: modo “Últimos 50”
+  const [dateInput, setDateInput] = useState("");
+
   const [qName, setQName] = useState("");
   const [qPatientId, setQPatientId] = useState("");
   const [qQuick, setQQuick] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
   const [studies, setStudies] = useState([]);
+
+  // WhatsApp modal
+  const [waOpen, setWaOpen] = useState(false);
+  const [waPhone, setWaPhone] = useState("");
+  const [waStudyId, setWaStudyId] = useState(null);
+  const [waErr, setWaErr] = useState("");
 
   const yyyymmdd = useMemo(() => toYYYYMMDD(dateInput), [dateInput]);
 
-  // URL del viewer (quita page=study_list y pone study=<OrthancStudyID>)
   const buildViewerUrl = useCallback((studyOrthancId) => {
-    const u = new URL(window.location.href);
-    u.searchParams.delete("page");
-    u.searchParams.set("study", studyOrthancId);
-    return u.toString();
+    // Ajusta aquí si tu viewer usa otra ruta/parámetro
+    const url = new URL(window.location.href);
+    url.searchParams.set("study", studyOrthancId);
+    url.searchParams.set("page", "viewer");
+    return url.toString();
   }, []);
 
   const openViewer = useCallback(
     (studyOrthancId) => {
-      if (typeof onOpenStudy === "function") {
-        onOpenStudy(studyOrthancId);
-        return;
-      }
-      window.location.href = buildViewerUrl(studyOrthancId);
-    },
-    [onOpenStudy, buildViewerUrl]
-  );
-
-  const downloadStudyZip = useCallback((studyOrthancId) => {
-    const url = `${BASE}studies/${studyOrthancId}/archive`;
-    window.open(url, "_blank", "noopener,noreferrer");
-  }, []);
-
-  const shareWhatsapp = useCallback(
-    (studyOrthancId) => {
       const link = buildViewerUrl(studyOrthancId);
-      const wa = `https://wa.me/?text=${encodeURIComponent(link)}`;
-      window.open(wa, "_blank", "noopener,noreferrer");
+      window.open(link, "_blank", "noopener,noreferrer");
     },
     [buildViewerUrl]
   );
+
+  const sanitizePhone = (raw) => String(raw || "").replace(/[^\d]/g, "");
+
+  const openWhatsAppModal = useCallback((studyId) => {
+    setWaStudyId(studyId);
+    setWaPhone("");
+    setWaErr("");
+    setWaOpen(true);
+  }, []);
+
+  const sendWhatsApp = useCallback(() => {
+    const phone = sanitizePhone(waPhone);
+
+    // Regla mínima: debe venir con código país. Ej: 5037XXXXXXX, 39123..., etc.
+    if (!phone || phone.length < 10) {
+      setWaErr("Número inválido. Usa código país + número (ej: 50371234567).");
+      return;
+    }
+    if (!waStudyId) {
+      setWaErr("No hay estudio seleccionado.");
+      return;
+    }
+
+    const link = buildViewerUrl(waStudyId);
+    const text = `Le compartimos el enlace con los resultados de su estudio: ${link}`;
+
+    // Esto abre WhatsApp Web/App con el mensaje prellenado.
+    // Para “enviar automático” necesitarías WhatsApp Business API (backend + costos).
+    const waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
+    window.open(waUrl, "_blank", "noopener,noreferrer");
+
+    setWaOpen(false);
+  }, [waPhone, waStudyId, buildViewerUrl]);
 
   const fetchStudies = useCallback(async () => {
     setLoading(true);
@@ -111,105 +122,97 @@ export default function StudyList({ onOpenStudy }) {
 
     try {
       if (!BASE) throw new Error("ORTHANC base vacío");
-      if (!yyyymmdd)
-        throw new Error("Fecha inválida (no puedo formar YYYYMMDD)");
 
-      // 1) Buscar series por StudyDate
-      const findUrl = `${BASE}tools/find`;
-      const findPayload = {
-        Level: "Series",
-        Expand: false,
-        Query: { StudyDate: yyyymmdd },
+      const safe = (v) => String(v || "").replace(/[^0-9]/g, "");
+
+      const mapStudy = (id, data) => {
+        const modality =
+          data?.MainDicomTags?.Modality ||
+          (Array.isArray(data?.MainDicomTags?.ModalitiesInStudy)
+            ? data.MainDicomTags.ModalitiesInStudy.join(", ")
+            : data?.MainDicomTags?.ModalitiesInStudy) ||
+          "";
+
+        return {
+          id,
+          description: data?.MainDicomTags?.StudyDescription || "Sin descripción",
+          date: data?.MainDicomTags?.StudyDate || "",
+          time: data?.MainDicomTags?.StudyTime || "",
+          modality,
+          patientName: data?.PatientMainDicomTags?.PatientName || "Desconocido",
+          patientID: data?.PatientMainDicomTags?.PatientID || "N/A",
+        };
       };
 
-      const findResp = await postJsonNoPreflight(findUrl, findPayload);
+      const sortByDateDesc = (a, b) => {
+        const aKey = `${safe(a.date)}${safe(a.time)}`;
+        const bKey = `${safe(b.date)}${safe(b.time)}`;
+        if (aKey !== bKey) return aKey < bKey ? 1 : -1; // DESC
+        return (a.id || "").localeCompare(b.id || "");
+      };
 
-      if (!findResp.ok) {
-        const t = await findResp.text().catch(() => "");
-        throw new Error(
-          `Orthanc /tools/find HTTP ${findResp.status} ${t || ""}`.trim()
+      // MODO FECHA: todos los estudios del día seleccionado
+      if (yyyymmdd) {
+        const findUrl = `${BASE}tools/find`;
+        const findPayload = {
+          Level: "Study",
+          Expand: false,
+          Query: { StudyDate: yyyymmdd },
+        };
+
+        const findResp = await postJsonNoPreflight(findUrl, findPayload);
+
+        if (!findResp.ok) {
+          const t = await findResp.text().catch(() => "");
+          throw new Error(
+            `Orthanc /tools/find HTTP ${findResp.status} ${t || ""}`.trim()
+          );
+        }
+
+        const studyIdsAll = await findResp.json();
+        const studyIds = Array.isArray(studyIdsAll)
+          ? studyIdsAll.filter((x) => typeof x === "string" && x)
+          : [];
+
+        if (!studyIds.length) {
+          setStudies([]);
+          return;
+        }
+
+        const loaded = await Promise.all(
+          studyIds.map(async (id) => {
+            const r = await fetch(`${BASE}studies/${id}`);
+            if (!r.ok) return null;
+            const data = await r.json();
+            return mapStudy(id, data);
+          })
         );
-      }
 
-      const seriesIdsAll = await findResp.json();
-      const seriesIds = Array.isArray(seriesIdsAll)
-        ? seriesIdsAll.filter((x) => typeof x === "string" && x)
-        : [];
-
-      if (!seriesIds.length) {
-        setStudies([]);
+        setStudies(loaded.filter(Boolean).sort(sortByDateDesc));
         return;
       }
 
-      // 2) Series -> ParentStudy + Modality
-      const modalityByStudy = new Map();
-      const studyIdsSet = new Set();
+      // MODO GLOBAL: últimos 50 estudios
+      const r = await fetch(`${BASE}studies?expand=true`);
+      if (!r.ok) throw new Error(`Orthanc /studies HTTP ${r.status}`);
 
-      await Promise.all(
-        seriesIds.map(async (sid) => {
-          const r = await fetch(`${BASE}series/${sid}`);
-          if (!r.ok) return;
-          const data = await r.json();
-          const studyId = data?.ParentStudy;
-          if (!studyId) return;
+      const all = await r.json();
+      const arr = Array.isArray(all) ? all : [];
 
-          studyIdsSet.add(studyId);
+      const mapped = arr
+        .map((st) => mapStudy(st?.ID, st))
+        .filter((x) => x && x.id)
+        .sort(sortByDateDesc)
+        .slice(0, 50);
 
-          const mod = data?.MainDicomTags?.Modality || "";
-          if (mod) modalityByStudy.set(studyId, mod);
-        })
-      );
-
-      // 3) Cargar Studies (para PatientMainDicomTags)
-      const studyIds = Array.from(studyIdsSet);
-
-      const loaded = await Promise.all(
-        studyIds.map(async (id) => {
-          const r = await fetch(`${BASE}studies/${id}`);
-          if (!r.ok) return null;
-          const data = await r.json();
-
-          const modalityFromStudy =
-            modalityByStudy.get(id) ||
-            data?.MainDicomTags?.Modality ||
-            (Array.isArray(data?.MainDicomTags?.ModalitiesInStudy)
-              ? data.MainDicomTags.ModalitiesInStudy.join(", ")
-              : data?.MainDicomTags?.ModalitiesInStudy) ||
-            "";
-
-          return {
-            id,
-            description:
-              data?.MainDicomTags?.StudyDescription || "Sin descripción",
-            date: data?.MainDicomTags?.StudyDate || "",
-            modality: modalityFromStudy || "",
-            patientName:
-              data?.PatientMainDicomTags?.PatientName || "Desconocido",
-            patientID: data?.PatientMainDicomTags?.PatientID || "N/A",
-          };
-        })
-      );
-
-      const cleaned = loaded.filter(Boolean);
-
-      cleaned.sort((a, b) => {
-        const A = (a.patientName || "").toLowerCase();
-        const B = (b.patientName || "").toLowerCase();
-        if (A !== B) return A < B ? -1 : 1;
-        const dA = (a.description || "").toLowerCase();
-        const dB = (b.description || "").toLowerCase();
-        if (dA !== dB) return dA < dB ? -1 : 1;
-        return (a.id || "").localeCompare(b.id || "");
-      });
-
-      setStudies(cleaned);
+      setStudies(mapped);
     } catch (e) {
       setStudies([]);
       setError(e?.message || "Error cargando estudios");
     } finally {
       setLoading(false);
     }
-  }, [yyyymmdd]);
+  }, [BASE, yyyymmdd]);
 
   useEffect(() => {
     fetchStudies();
@@ -240,35 +243,41 @@ export default function StudyList({ onOpenStudy }) {
     });
   }, [studies, qName, qPatientId, qQuick]);
 
+  const downloadStudyZip = async (studyOrthancId) => {
+    try {
+      // Orthanc devuelve ZIP con los DICOM del estudio
+      const url = `${BASE}studies/${studyOrthancId}/archive`;
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (e) {
+      setError(e?.message || "Error descargando DICOM");
+    }
+  };
+
   return (
     <div className="sl-page">
       <div className="sl-shell">
-        <div className="sl-header">
-          <div
-            style={{
-              display: "flex",
-              gap: 12,
-              alignItems: "center",
-              marginBottom: 10,
-            }}
-          >
-            <div
-  className="sl-logoWrap"
->
-            <img
-              src="/logo.png"
-              alt="Logo"
-              className="sl-logo"
-              onError={(e) => (e.currentTarget.style.display = "none")}
-            />
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <h2 className="sl-title" style={{ marginBottom: 2 }}>
-                Lista de Estudios
-              </h2>
-              <div className="sl-pill">
-                Fecha: {yyyymmdd ? formatDateDDMMYYYY(yyyymmdd) : "—"} ·{" "}
-                {loading ? "Cargando..." : `${filtered.length}/${studies.length}`}
+        <div className="sl-card">
+          <div className="sl-header">
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ width: 44, height: 44 }}>
+                <img
+                  src="/logo.png"
+                  alt="Logo"
+                  className="sl-logo"
+                  onError={(e) => (e.currentTarget.style.display = "none")}
+                />
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <h2 className="sl-title" style={{ marginBottom: 2 }}>
+                  Lista de Estudios
+                </h2>
+                <div className="sl-pill">
+                  Vista:{" "}
+                  {yyyymmdd
+                    ? `Fecha ${formatDateDDMMYYYY(yyyymmdd)}`
+                    : "Últimos 50"}{" "}
+                  · {loading ? "Cargando..." : `${filtered.length}/${studies.length}`}
+                </div>
               </div>
             </div>
           </div>
@@ -292,7 +301,7 @@ export default function StudyList({ onOpenStudy }) {
               <span style={{ fontSize: 12, opacity: 0.8 }}>Fecha</span>
               <input
                 type="date"
-                value={dateInput}
+                value={dateInput || ""}
                 onChange={(e) => setDateInput(e.target.value)}
                 style={{
                   padding: "9px 10px",
@@ -302,6 +311,17 @@ export default function StudyList({ onOpenStudy }) {
                   color: "#eaeef6",
                 }}
               />
+              {dateInput && (
+                <button
+                  type="button"
+                  className="sl-clear"
+                  style={{ position: "static", transform: "none" }}
+                  onClick={() => setDateInput("")}
+                  title="Quitar fecha"
+                >
+                  ×
+                </button>
+              )}
             </label>
 
             <div className="sl-searchWrap">
@@ -322,10 +342,10 @@ export default function StudyList({ onOpenStudy }) {
               )}
             </div>
 
-            <div className="sl-searchWrap" style={{ minWidth: 220 }}>
+            <div className="sl-searchWrap">
               <input
                 className="sl-search"
-                placeholder="Buscar por ID paciente"
+                placeholder="Buscar por Patient ID"
                 value={qPatientId}
                 onChange={(e) => setQPatientId(e.target.value)}
               />
@@ -340,10 +360,10 @@ export default function StudyList({ onOpenStudy }) {
               )}
             </div>
 
-            <div className="sl-searchWrap" style={{ minWidth: 260 }}>
+            <div className="sl-searchWrap" style={{ flex: 1 }}>
               <input
                 className="sl-search"
-                placeholder="Filtro rápido: paciente / ID / mod / desc…"
+                placeholder="Búsqueda rápida (nombre, ID, modalidad, descripción)"
                 value={qQuick}
                 onChange={(e) => setQQuick(e.target.value)}
               />
@@ -358,82 +378,119 @@ export default function StudyList({ onOpenStudy }) {
               )}
             </div>
 
-            <button
-              className="sl-btn sl-btnPrimary"
-              onClick={fetchStudies}
-              disabled={loading}
-            >
-              Refrescar
+            <button className="sl-btn" onClick={fetchStudies} disabled={loading}>
+              Recargar
             </button>
           </div>
 
-          {error && <div className="sl-error">{error}</div>}
-        </div>
-
-        <div className="sl-list">
-          {!loading && filtered.length === 0 ? (
-            <div className="sl-empty">
-              No hay estudios para los filtros seleccionados.
-              <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>
-                Mostrando {filtered.length} de {studies.length} estudios para la
-                fecha {yyyymmdd ? formatDateDDMMYYYY(yyyymmdd) : "—"}.
-              </div>
+          {error && (
+            <div className="sl-error" style={{ marginTop: 10 }}>
+              {error}
             </div>
-          ) : (
-            filtered.map((st) => (
-              <div className="sl-card" key={st.id}>
-                <div className="sl-cardTop">
-                  <div className="sl-main">
-                    <div className="sl-patient">
-                      {safe(st.patientName, "Desconocido")}
-                    </div>
-                    <div className="sl-sub">
-                      <span className="sl-muted">{safe(st.patientID, "N/A")}</span>
-                      <span className="sl-dot">•</span>
-                      <span className="sl-muted">
-                        {st.date ? formatDateDDMMYYYY(st.date) : "Sin fecha"}
-                      </span>
-                    </div>
-                    <div className="sl-desc">
-                      {safe(st.description, "Sin descripción")}
-                    </div>
-                  </div>
+          )}
 
-                  <div className="sl-meta">
-                    <div className={`sl-badge ${st.modality ? "" : "sl-badgeDim"}`}>
-                      {st.modality ? st.modality : "—"}
+          <div className="sl-list" style={{ marginTop: 12 }}>
+            {loading ? (
+              <div className="sl-empty">Cargando...</div>
+            ) : filtered.length === 0 ? (
+              <div className="sl-empty">
+                No hay estudios {yyyymmdd ? "para esa fecha" : "recientes"}.
+              </div>
+            ) : (
+              filtered.map((st) => (
+                <div className="sl-row" key={st.id}>
+                  <div className="sl-main">
+                    <div className="sl-top">
+                      <div className="sl-desc" title={st.description}>
+                        {st.description}
+                      </div>
+
+                      <div className="sl-meta">
+                        <span className="sl-chip">{st.modality || "—"}</span>
+                        <span className="sl-chip">
+                          {st.date ? formatDateDDMMYYYY(st.date) : "—"}
+                        </span>
+                      </div>
                     </div>
+
+                    <div className="sl-sub">
+                      <div className="sl-patient" title={st.patientName}>
+                        {st.patientName}
+                      </div>
+                      <div className="sl-pid">ID: {st.patientID}</div>
+                    </div>
+
                     <div className="sl-id" title={st.id}>
                       Orthanc ID: {st.id}
                     </div>
                   </div>
+
+                  <div className="sl-actions">
+                    <button
+                      className="sl-btn sl-btnPrimary"
+                      onClick={() => openViewer(st.id)}
+                    >
+                      Ver en ViewerJS
+                    </button>
+
+                    <button className="sl-btn" onClick={() => downloadStudyZip(st.id)}>
+                      DICOM
+                    </button>
+
+                    <button className="sl-btn" onClick={() => openWhatsAppModal(st.id)}>
+                      WhatsApp
+                    </button>
+                  </div>
                 </div>
+              ))
+            )}
+          </div>
 
-                <div className="sl-actions">
-                  <button
-                    className="sl-btn sl-btnPrimary"
-                    onClick={() => openViewer(st.id)}
-                  >
-                    Ver en ViewerJS
-                  </button>
-
-                  <button className="sl-btn" onClick={() => downloadStudyZip(st.id)}>
-                    Descargar DICOM
-                  </button>
-
-                  <button className="sl-btn" onClick={() => shareWhatsapp(st.id)}>
-                    WhatsApp
-                  </button>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-
-        <div style={{ marginTop: 14, fontSize: 12, opacity: 0.7 }}>
-          Base Orthanc: <span style={{ opacity: 0.9 }}>{BASE}</span>
+          <div style={{ marginTop: 14, fontSize: 12, opacity: 0.7 }}>
+            Base Orthanc: <span style={{ opacity: 0.9 }}>{BASE}</span>
+          </div>
         </div>
       </div>
+
+      {/* WhatsApp Modal */}
+      {waOpen && (
+        <div className="sl-modalBackdrop" onClick={() => setWaOpen(false)}>
+          <div className="sl-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="sl-modalTitle">Enviar por WhatsApp</div>
+
+            <div className="sl-modalHint">
+              Escribe el número con <b>código país</b>. Ej: <code>50371234567</code>
+            </div>
+
+            <input
+              className="sl-modalInput"
+              placeholder="50371234567"
+              value={waPhone}
+              onChange={(e) => setWaPhone(e.target.value)}
+              inputMode="numeric"
+            />
+
+            {waErr && (
+              <div className="sl-error" style={{ marginTop: 10 }}>
+                {waErr}
+              </div>
+            )}
+
+            <div className="sl-modalActions">
+              <button className="sl-btn" onClick={() => setWaOpen(false)}>
+                Cancelar
+              </button>
+              <button className="sl-btn sl-btnPrimary" onClick={sendWhatsApp}>
+                Enviar
+              </button>
+            </div>
+
+            <div className="sl-modalFoot">
+              Nota: esto abre WhatsApp (web/app). Debes estar logueado para enviar.
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
