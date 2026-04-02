@@ -1,6 +1,7 @@
 // src/StudyList.jsx
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import "./StudyList.css";
+//import { ORTHANC_BASE } from "./config";
 
 // Soporta CRA y Vite
 const ORTHANC_BASE =

@@ -479,3 +479,7 @@ html, body, #root {
   top: 50%;
   transform: translateY(-50%);
 }
+
+.viewport.mode-measure {
+  cursor: crosshair;
+}

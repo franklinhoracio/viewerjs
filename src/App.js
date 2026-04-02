@@ -2,14 +2,15 @@
 import React, { useEffect, useRef, useState } from "react";
 import dicomParser from "dicom-parser";
 import cornerstoneWADOImageLoader from "cornerstone-wado-image-loader";
-import { cornerstone } from "./cornerstoneConfig";
+import { cornerstone, cornerstoneTools } from "./cornerstoneConfig";
 import "./App.css";
 import StudyList from "./StudyList";
+import { ORTHANC_BASE } from "./config";
 
-const ORTHANC_BASE =
-  process.env.REACT_APP_ORTHANC_BASE ||
+//const ORTHANC_BASE =
+  //process.env.REACT_APP_ORTHANC_BASE ||
   //"https://testdcm.morisportal.com:50443/orthanc/";
-  "https://dcm.morisportal.com/orthanc/";
+  //"https://dcm.morisportal.com/orthanc/";
 
 const BASE = ORTHANC_BASE;
 const ORTHANC_DOWNLOAD_BASE = ORTHANC_BASE;
@@ -164,6 +165,11 @@ export default function App() {
       const image = await cornerstone.loadAndCacheImage(imageId);
       cornerstone.displayImage(el, image);
 
+      console.log("IMAGE LOADED", image);
+      console.log("PIXEL SPACING", image.rowPixelSpacing, image.columnPixelSpacing);
+      console.log("ACTIVE TOOL", activeToolRef.current);
+
+      cornerstone.updateImage(el);
       // título dinámico por serie
       const desc =
         s?.description ||
@@ -376,8 +382,16 @@ export default function App() {
     if (isStudyList) return; // modo lista: no tocar cornerstone
 
     // Bridge
-    cornerstoneWADOImageLoader.external.cornerstone = cornerstone;
-    cornerstoneWADOImageLoader.external.dicomParser = dicomParser;
+cornerstoneWADOImageLoader.external.cornerstone = cornerstone;
+cornerstoneWADOImageLoader.external.dicomParser = dicomParser;
+
+const wadouriMetaProvider =
+  cornerstoneWADOImageLoader?.wadouri?.metaData?.metaDataProvider ||
+  cornerstoneWADOImageLoader?.wadouri?.metaDataProvider;
+
+if (wadouriMetaProvider) {
+  cornerstone.metaData.addProvider(wadouriMetaProvider);
+}
 
     const DIST = "https://unpkg.com/cornerstone-wado-image-loader@3.0.1/dist";
     cornerstoneWADOImageLoader.webWorkerManager.initialize({
@@ -399,6 +413,13 @@ export default function App() {
     try {
       cornerstone.enable(el);
     } catch {}
+
+  try {
+  cornerstoneTools.addToolForElement(el, cornerstoneTools.LengthTool);
+  cornerstoneTools.setToolPassiveForElement(el, "Length");
+} catch (err) {
+  console.error("Error inicializando LengthTool", err);
+}
 
     // focus para teclas
     try {
@@ -552,10 +573,16 @@ export default function App() {
     let wlDragStart = { x: 0, y: 0 };
 
     const onPointerDown = (evt) => {
-      const tool = activeToolRef.current;
-      if (tool !== "window" && tool !== "pan" && tool !== "zoom") return;
-      evt.preventDefault();
-      isDraggingRef.current = true;
+  const tool = activeToolRef.current;
+
+  if (tool === "measure") {
+    return;
+  }
+
+  if (tool !== "window" && tool !== "pan" && tool !== "zoom") return;
+
+  evt.preventDefault();
+  isDraggingRef.current = true;
 
       if (tool === "window") {
         wlDragStart = { x: evt.clientX, y: evt.clientY };
@@ -642,9 +669,12 @@ export default function App() {
     el.addEventListener("touchmove", onTouchMove, { passive: false });
     el.addEventListener("touchend", onTouchEnd, { passive: true });
 
-    el.addEventListener("pointerdown", onPointerDown);
-    el.addEventListener("pointermove", onPointerMove);
-    window.addEventListener("pointerup", onPointerUp);
+    //el.addEventListener("pointerdown", onPointerDown);
+    //el.addEventListener("pointermove", onPointerMove);
+    //window.addEventListener("pointerup", onPointerUp);
+    el.addEventListener("mousedown", onPointerDown);
+    el.addEventListener("mousemove", onPointerMove);
+    window.addEventListener("mouseup", onPointerUp);
 
     return () => {
       stopEdgeScroll();
@@ -662,9 +692,12 @@ export default function App() {
         el.removeEventListener("touchmove", onTouchMove);
         el.removeEventListener("touchend", onTouchEnd);
 
-        el.removeEventListener("pointerdown", onPointerDown);
-        el.removeEventListener("pointermove", onPointerMove);
-        window.removeEventListener("pointerup", onPointerUp);
+        //el.removeEventListener("pointerdown", onPointerDown);
+        //el.removeEventListener("pointermove", onPointerMove);
+        //window.removeEventListener("pointerup", onPointerUp);
+        el.removeEventListener("mousedown", onPointerDown);
+        el.removeEventListener("mousemove", onPointerMove);
+        window.removeEventListener("mouseup", onPointerUp);
 
         try {
           cornerstone.disable(el);
@@ -674,6 +707,39 @@ export default function App() {
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isStudyList, studyIdFromUrl]);
+
+useEffect(() => {
+  if (isStudyList) return;
+
+  const el = viewportRef.current;
+  if (!el) return;
+
+  try {
+    if (activeTool === "measure") {
+      cornerstoneTools.setToolActiveForElement(
+        el,
+        "Length",
+        { mouseButtonMask: 1 },
+        ["Mouse"]
+      );
+      el.style.cursor = "crosshair";
+    } else {
+      cornerstoneTools.setToolPassiveForElement(el, "Length");
+
+      if (activeTool === "pan") {
+        el.style.cursor = "grab";
+      } else if (activeTool === "zoom") {
+        el.style.cursor = "zoom-in";
+      } else {
+        el.style.cursor = "default";
+      }
+    }
+
+    cornerstone.updateImage(el);
+  } catch (err) {
+    console.error("Error cambiando LengthTool", err);
+  }
+}, [activeTool, isStudyList]);
 
   // -------- Reportes demo --------
   const REPORT_COLUMNA = `ESTUDIO COLUMNA
@@ -758,16 +824,7 @@ Conclusión:
           )}
         </button>
 
-        {/* Botón para ir a la lista */}
-        <button
-          type="button"
-          className="topButton"
-          onClick={() => {
-            window.location.href = `${window.location.pathname}?page=study_list`;
-          }}
-        >
-          Study List
-        </button>
+
       </div>
 
       {/* Título por serie */}
@@ -806,14 +863,16 @@ Conclusión:
         <div
           ref={viewportRef}
           className={`viewport ${
-            activeTool === "window"
-              ? "mode-wl"
-              : activeTool === "pan"
-              ? "mode-pan"
-              : activeTool === "zoom"
-              ? "mode-zoom"
-              : ""
-          }`}
+  activeTool === "window"
+    ? "mode-wl"
+    : activeTool === "pan"
+    ? "mode-pan"
+    : activeTool === "zoom"
+    ? "mode-zoom"
+    : activeTool === "measure"
+    ? "mode-measure"
+    : ""
+}`}
         />
 
         {/* Contador instancias */}
@@ -876,10 +935,24 @@ Conclusión:
           title="Zoom"
           onClick={() => setActiveTool("zoom")}
         >
+        
           <svg viewBox="0 0 24 24" className="toolIcon" aria-hidden="true">
             <path d="M10 3a7 7 0 015.657 11.313l3.515 3.515-1.414 1.414-3.515-3.515A7 7 0 1110 3zm0 2a5 5 0 100 10 5 5 0 000-10z" />
           </svg>
         </button>
+
+<button
+  type="button"
+  className={`toolButton ${activeTool === "measure" ? "active" : ""}`}
+  aria-pressed={activeTool === "measure"}
+  title="Medir"
+  onClick={() => setActiveTool("measure")}
+>
+  <svg viewBox="0 0 24 24" className="toolIcon" aria-hidden="true">
+    <path d="M21.71 11.29l-9-9a1 1 0 00-1.42 0l-9 9a1 1 0 000 1.42l9 9a1 1 0 001.42 0l9-9a1 1 0 000-1.42zM12 20.17L3.83 12 6 9.83l1.5 1.5 1.41-1.41-1.5-1.5L9 6.83l1.5 1.5 1.41-1.41-1.5-1.5L12 3.83 20.17 12 12 20.17z"/>
+  </svg>
+</button>
+
       </div>
 
       {/* Botón reporte */}

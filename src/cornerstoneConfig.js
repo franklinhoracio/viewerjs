@@ -12,6 +12,7 @@ cornerstoneTools.external.Hammer = Hammer;
 // Inicializa las herramientas
 cornerstoneTools.init({
   showSVGCursors: true,
+  globalToolSyncEnabled: true,
 });
 
 // Exporta cornerstone y tools para usarlos en otros componentes
