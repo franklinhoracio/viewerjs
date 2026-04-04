@@ -84,10 +84,13 @@ html, body, #root {
 /* Toolbar centrada debajo del viewport */
 .viewportToolbar {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
-  align-items: center;
   gap: 12px;
-  margin: 10px auto 2px;
+  margin: 18px auto 12px;
+  width: min(100%, 980px);
+  padding: 0 12px;
+  box-sizing: border-box;
 }
 
 /* Botón base */
@@ -101,6 +104,8 @@ html, body, #root {
   cursor: pointer;
   box-shadow: 0 1px 2px rgba(0,0,0,.25), inset 0 0 0 1px rgba(255,255,255,.05);
   transition: transform .06s ease, background .15s ease, border-color .15s ease, box-shadow .15s ease;
+  flex: 0 1 calc(25% - 10px);
+  min-width: 86px;
 }
 
 .toolButton:hover {
@@ -127,10 +132,39 @@ html, body, #root {
   fill: currentColor;
 }
 
+@media (max-width: 768px) {
+  .viewportToolbar {
+    gap: 10px;
+    width: 100%;
+    padding: 0 10px;
+  }
+  }
+
 /* Responsive: botones un poco más grandes en móviles */
 @media (max-width: 480px) {
-  .toolButton { padding: 12px 16px; border-radius: 14px; }
-  .toolIcon { width: 30px; height: 30px; }
+    .viewportToolbar {
+    gap: 8px;
+  }
+
+  .toolButton {
+    flex: 0 1 calc(50% - 8px);
+    min-width: 120px;
+  }
+
+  .bottomActions .topButton {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .reportFrameWrap {
+    height: 58vh;
+    min-height: 360px;
+  }
+
+  .toolIcon { 
+    width: 30px; 
+    height: 30px; 
+  }
 }
 
 .viewport.mode-wl { cursor: crosshair; }
@@ -375,19 +409,49 @@ html, body, #root {
 
 .bottomActions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
+  width: 100%;
+  padding: 0 10px;
+  gap: 10px;  
+  margin: 0 auto 18px;
+  box-sizing: border-box;
   margin-top: 12px;
+}
+
+.bottomActions .topButton {
+  flex: 1 1 calc(50% - 10px);
+  min-width: 140px;
+  max-width: none;
 }
 
 /* Caja de reporte */
 .reportBox {
   max-width: 720px;
-  margin: 24px auto 16px auto;
-  padding: 16px 18px;
+  width: calc(100% - 20px);
+  padding: 16px;
   border-radius: 16px;
-  background: #020617;
-  border: 1px solid #1f2933;
+  margin: 0 auto 24px;
+  box-sizing: border-box;
+  background: rgba(3, 18, 43, 0.95);
+  border: 1px solid rgba(90, 130, 200, 0.25);  
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+}
+
+.reportFrameWrap {
+  width: 100%;
+  height: 62vh;
+  min-height: 420px;
+  background: #fff;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.reportFrame {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
 }
 
 .reportBox h4 {

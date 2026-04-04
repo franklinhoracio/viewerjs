@@ -1020,25 +1020,26 @@ useEffect(() => {
       No hay reporte disponible para este estudio.
     </p>
   ) : showReport ? (
-    <div
-      style={{
-        width: "100%",
-        height: "700px",
-        background: "#fff",
-        borderRadius: "10px",
-        overflow: "hidden",
-      }}
+    <div className="reportFrameWrap"
+      //style={{
+        //width: "100%",
+        //height: "700px",
+        //background: "#fff",
+        //borderRadius: "10px",
+        //overflow: "hidden",
+      //}}
     >
       <iframe
         src={`${REPORT_API_BASE}/studies/${encodeURIComponent(
           studyIdFromUrl
         )}/report/content`}
         title="Reporte PDF"
-        style={{
-          width: "100%",
-          height: "100%",
-          border: "none",
-        }}
+        className="reportFrameWrap"
+        //style={{
+          //width: "100%",
+          //height: "100%",
+          //border: "none",
+        //}}
       />
     </div>
   ) : (
