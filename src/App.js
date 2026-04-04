@@ -708,12 +708,13 @@ if (wadouriMetaProvider) {
     el.addEventListener("touchmove", onTouchMove, { passive: false });
     el.addEventListener("touchend", onTouchEnd, { passive: true });
 
-    //el.addEventListener("pointerdown", onPointerDown);
-    //el.addEventListener("pointermove", onPointerMove);
-    //window.addEventListener("pointerup", onPointerUp);
-    el.addEventListener("mousedown", onPointerDown);
-    el.addEventListener("mousemove", onPointerMove);
-    window.addEventListener("mouseup", onPointerUp);
+    //el.addEventListener("mousedown", onPointerDown);
+    //el.addEventListener("mousemove", onPointerMove);
+    //window.addEventListener("mouseup", onPointerUp);
+    el.addEventListener("pointerdown", onPointerDown);
+    el.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerUp);
 
     return () => {
       stopEdgeScroll();
@@ -731,12 +732,13 @@ if (wadouriMetaProvider) {
         el.removeEventListener("touchmove", onTouchMove);
         el.removeEventListener("touchend", onTouchEnd);
 
-        //el.removeEventListener("pointerdown", onPointerDown);
-        //el.removeEventListener("pointermove", onPointerMove);
-        //window.removeEventListener("pointerup", onPointerUp);
-        el.removeEventListener("mousedown", onPointerDown);
-        el.removeEventListener("mousemove", onPointerMove);
-        window.removeEventListener("mouseup", onPointerUp);
+        //el.removeEventListener("mousedown", onPointerDown);
+        //el.removeEventListener("mousemove", onPointerMove);
+        //window.removeEventListener("mouseup", onPointerUp);
+        el.removeEventListener("pointerdown", onPointerDown);
+        el.removeEventListener("pointermove", onPointerMove);
+        window.removeEventListener("pointerup", onPointerUp);
+        window.removeEventListener("pointercancel", onPointerUp);
 
         try {
           cornerstone.disable(el);
@@ -759,7 +761,7 @@ useEffect(() => {
         el,
         "Length",
         { mouseButtonMask: 1 },
-        ["Mouse"]
+        ["Mouse", "Touch"]
       );
       el.style.cursor = "crosshair";
     } else {
