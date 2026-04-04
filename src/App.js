@@ -104,6 +104,12 @@ export default function App() {
   const [showShareModal, setShowShareModal] = useState(false);
   const [showReport, setShowReport] = useState(false);
 
+  const REPORT_API_BASE = "https://viewer.morisportal.com/api";
+
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportInfo, setReportInfo] = useState(null);
+  const [reportError, setReportError] = useState("");
+
   // tool state
   const [activeTool, setActiveTool] = useState("navigate");
   const activeToolRef = useRef(activeTool);
@@ -274,6 +280,7 @@ export default function App() {
 
   // ----------- loadStudy: carga estudio + paciente + historial -----------
   const loadStudy = async (studyId) => {
+
     if (!studyId) return;
 
     try {
@@ -377,6 +384,37 @@ export default function App() {
     }
   };
 
+const fetchReport = async () => {
+  if (!studyIdFromUrl) return;
+
+  setReportLoading(true);
+  setReportError("");
+
+  try {
+    const resp = await fetch(
+      `${REPORT_API_BASE}/studies/${encodeURIComponent(studyIdFromUrl)}/report`
+    );
+
+    if (resp.status === 404) {
+      setReportInfo(null);
+      return;
+    }
+
+    const data = await resp.json();
+
+    if (!resp.ok) {
+      throw new Error(data?.message || "Error consultando reporte");
+    }
+
+    setReportInfo(data);
+  } catch (err) {
+    setReportError(err.message);
+    setReportInfo(null);
+  } finally {
+    setReportLoading(false);
+  }
+};
+
   // -------- Visor: init / listeners / resize / loadStudy --------
   useEffect(() => {
     if (isStudyList) return; // modo lista: no tocar cornerstone
@@ -457,6 +495,7 @@ if (wadouriMetaProvider) {
       console.warn("Falta ?study=<StudyID>");
     } else {
       loadStudy(studyIdFromUrl);
+      fetchReport();
     }
 
     // ResizeObserver
@@ -741,37 +780,6 @@ useEffect(() => {
   }
 }, [activeTool, isStudyList]);
 
-  // -------- Reportes demo --------
-  const REPORT_COLUMNA = `ESTUDIO COLUMNA
-
-Densidad ósea normal.
-La estatura de los cuerpos vertebrales y de los espacios intervertebrales está conservada.
-Hay rectificación de la lordosis lumbar fisiológica por espasmo muscular.
-Pedículos, arcos posteriores y articulaciones sacroilíacas normales.
-
-CONCLUSIÓN:
-- Espasmo muscular.`;
-
-  const REPORT_TOBILLO = `REPORTE ESTUDIO DE TOBILLO
-
-Estructuras óseas de densidad y morfología normales, no hay fracturas.
-Mortaja tibioperoneoastragalina con adecuada congruencia, espacios y superficies normales.
-No hay diástasis tibioperonea.
-Se aprecia aumento de tejidos blandos alrededor del maléolo externo.
-
-Conclusión:
-- Esguince de tobillo grado I`;
-
-  const getCurrentReport = () => {
-    if (!currentStudyMeta) return null;
-    const desc = (currentStudyMeta.description || "").toLowerCase();
-    if (desc.includes("columna")) return REPORT_COLUMNA;
-    if (desc.includes("tobillo")) return REPORT_TOBILLO;
-    return null;
-  };
-
-  const currentReport = getCurrentReport();
-
   // ✅ Render: si es lista, mostramos lista. Si no, visor.
   if (isStudyList) {
     return (
@@ -955,25 +963,90 @@ Conclusión:
 
       </div>
 
-      {/* Botón reporte */}
-      <div className="bottomActions">
-        <button
-          type="button"
-          className="topButton"
-          disabled={!currentStudyMeta}
-          onClick={() => {
-            setShowReport(true);
-            setTimeout(() => {
-              window.scrollTo({
-                top: document.body.scrollHeight,
-                behavior: "smooth",
-              });
-            }, 0);
-          }}
-        >
-          Ver reporte del estudio
-        </button>
-      </div>
+{/* Botón reporte */}
+<div className="bottomActions">
+  <button
+    type="button"
+    className="topButton"
+    disabled={!reportInfo?.hasReport && !reportLoading}
+    onClick={() => {
+      setShowReport((v) => !v);
+      setTimeout(() => {
+        window.scrollTo({
+          top: document.body.scrollHeight,
+          behavior: "smooth",
+        });
+      }, 0);
+    }}
+  >
+    {reportLoading
+      ? "Consultando reporte..."
+      : reportInfo?.hasReport
+      ? showReport
+        ? "Ocultar reporte"
+        : "Ver reporte del estudio"
+      : "No hay reporte"}
+  </button>
+
+  {reportInfo?.hasReport && (
+    <button
+      type="button"
+      className="topButton"
+      onClick={() =>
+        window.open(
+          `${REPORT_API_BASE}/studies/${encodeURIComponent(
+            studyIdFromUrl
+          )}/report/content`,
+          "_blank",
+          "noopener,noreferrer"
+        )
+      }
+    >
+      Abrir PDF
+    </button>
+  )}
+</div>
+
+{/* Reporte PDF real */}
+<div className="reportBox">
+  <h4>Reporte del estudio</h4>
+
+  {reportLoading ? (
+    <p className="reportEmpty">Cargando reporte...</p>
+  ) : reportError ? (
+    <p className="reportEmpty">{reportError}</p>
+  ) : !reportInfo?.hasReport ? (
+    <p className="reportEmpty">
+      No hay reporte disponible para este estudio.
+    </p>
+  ) : showReport ? (
+    <div
+      style={{
+        width: "100%",
+        height: "700px",
+        background: "#fff",
+        borderRadius: "10px",
+        overflow: "hidden",
+      }}
+    >
+      <iframe
+        src={`${REPORT_API_BASE}/studies/${encodeURIComponent(
+          studyIdFromUrl
+        )}/report/content`}
+        title="Reporte PDF"
+        style={{
+          width: "100%",
+          height: "100%",
+          border: "none",
+        }}
+      />
+    </div>
+  ) : (
+    <p className="reportEmpty">
+      El reporte está disponible. Presiona “Ver reporte del estudio”.
+    </p>
+  )}
+</div>
 
       {/* Modal paciente */}
       {showPatientModal && patientInfo && (
@@ -1112,19 +1185,7 @@ Conclusión:
         </div>
       )}
 
-      {/* Reporte demo */}
-      {showReport && (
-        <div className="reportBox">
-          <h4>Reporte del estudio</h4>
-          {currentReport ? (
-            <pre className="reportText">{currentReport}</pre>
-          ) : (
-            <p className="reportEmpty">
-              No hay reporte disponible para este estudio en el demo.
-            </p>
-          )}
-        </div>
-      )}
+
 
       <p className="footnote">
         ↑/↓ serie · ←/→ instancia · Swipe vertical = serie · Swipe horizontal = instancia
