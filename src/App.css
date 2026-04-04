@@ -81,7 +81,6 @@ html, body, #root {
   font-weight: 600;
 }
 
-/* Toolbar centrada debajo del viewport */
 .viewportToolbar {
   display: flex;
   flex-wrap: wrap;
@@ -93,19 +92,28 @@ html, body, #root {
   box-sizing: border-box;
 }
 
-/* Botón base */
+/* Botón base SIEMPRE cuadrado */
 .toolButton {
   appearance: none;
-  border: 1px solid #1e293b;        /* slate-800 */
-  background: #0b1220;              /* casi negro azulado */
-  color: #e5e7eb;                    /* gray-200 */
-  border-radius: 12px;
-  padding: 10px 14px;
+  border: 1px solid #1e293b;
+  background: #0b1220;
+  color: #e5e7eb;
+  border-radius: 18px;
   cursor: pointer;
   box-shadow: 0 1px 2px rgba(0,0,0,.25), inset 0 0 0 1px rgba(255,255,255,.05);
   transition: transform .06s ease, background .15s ease, border-color .15s ease, box-shadow .15s ease;
-  flex: 0 1 calc(25% - 10px);
-  min-width: 86px;
+  width: 84px;
+  height: 84px;
+  min-width: 84px;
+  min-height: 84px;
+  max-width: 84px;
+  max-height: 84px;
+  flex: 0 0 84px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  box-sizing: border-box;
 }
 
 .toolButton:hover {
@@ -138,32 +146,58 @@ html, body, #root {
     width: 100%;
     padding: 0 10px;
   }
+
+  .toolButton {
+    width: 76px;
+    height: 76px;
+    min-width: 76px;
+    min-height: 76px;
+    max-width: 76px;
+    max-height: 76px;
+    flex: 0 0 76px;
+    border-radius: 16px;
   }
 
-/* Responsive: botones un poco más grandes en móviles */
+  .toolIcon {
+    width: 28px;
+    height: 28px;
+  }
+
+  .reportBox {
+    width: calc(100% - 20px);
+    padding: 16px;
+  }
+
+  .reportFrameWrap {
+    height: 62vh;
+    min-height: 420px;
+  }
+}
+
 @media (max-width: 480px) {
-    .viewportToolbar {
+  .viewportToolbar {
     gap: 8px;
   }
 
   .toolButton {
-    flex: 0 1 calc(50% - 8px);
-    min-width: 120px;
+    width: 70px;
+    height: 70px;
+    min-width: 70px;
+    min-height: 70px;
+    max-width: 70px;
+    max-height: 70px;
+    flex: 0 0 70px;
+    border-radius: 14px;
   }
 
-  .bottomActions .topButton {
-    flex: 1 1 100%;
-    min-width: 0;
+  .toolIcon {
+    width: 26px;
+    height: 26px;
   }
 
   .reportFrameWrap {
     height: 58vh;
     min-height: 360px;
-  }
-
-  .toolIcon { 
-    width: 30px; 
-    height: 30px; 
   }
 }
 
@@ -409,38 +443,35 @@ html, body, #root {
 
 .bottomActions {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  width: 100%;
+  flex-direction: column;
+  align-items: center;
+  width: min(100%, 420px);
   padding: 0 10px;
-  gap: 10px;  
-  margin: 0 auto 18px;
+  gap: 10px;
+  margin: 12px auto 18px;
   box-sizing: border-box;
-  margin-top: 12px;
 }
 
 .bottomActions .topButton {
-  flex: 1 1 calc(50% - 10px);
-  min-width: 140px;
-  max-width: none;
+  width: 100%;
+  min-width: 0;
+  max-width: 420px;
 }
 
-/* Caja de reporte */
 .reportBox {
-  max-width: 720px;
-  width: calc(100% - 20px);
-  padding: 16px;
+  width: min(100%, 1100px);
+  padding: 20px;
   border-radius: 16px;
   margin: 0 auto 24px;
   box-sizing: border-box;
   background: rgba(3, 18, 43, 0.95);
-  border: 1px solid rgba(90, 130, 200, 0.25);  
+  border: 1px solid rgba(90, 130, 200, 0.25);
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
 }
 
 .reportFrameWrap {
   width: 100%;
-  height: 62vh;
+  height: clamp(520px, 72vh, 1000px);
   min-height: 420px;
   background: #fff;
   border-radius: 12px;
