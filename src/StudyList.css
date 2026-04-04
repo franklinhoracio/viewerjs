@@ -261,3 +261,10 @@
   max-width: 980px;
   overflow-x: hidden; /* CLAVE */
 }
+
+.sl-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}

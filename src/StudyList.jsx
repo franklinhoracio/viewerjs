@@ -1,7 +1,5 @@
-// src/StudyList.jsx
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./StudyList.css";
-//import { ORTHANC_BASE } from "./config";
 
 // Soporta CRA y Vite
 const ORTHANC_BASE =
@@ -9,8 +7,14 @@ const ORTHANC_BASE =
     import.meta.env &&
     import.meta.env.VITE_ORTHANC_BASE) ||
   process.env.REACT_APP_ORTHANC_BASE ||
-  //"https://testdcm.morisportal.com:50443/orthanc/";
   "https://dcm.morisportal.com/orthanc/";
+
+const REPORT_API_BASE =
+  (typeof import.meta !== "undefined" &&
+    import.meta.env &&
+    import.meta.env.VITE_REPORT_API_BASE) ||
+  process.env.REACT_APP_REPORT_API_BASE ||
+  "https://viewer.morisportal.com/api";
 
 // Normaliza para que SIEMPRE termine con "/"
 const normalizeOrthancBase = (base) => {
@@ -36,8 +40,7 @@ const formatDateDDMMYYYY = (yyyymmdd) => {
   return `${s.slice(6, 8)}/${s.slice(4, 6)}/${s.slice(0, 4)}`;
 };
 
-// POST JSON sin preflight (para evitar CORS cuando el server no permite OPTIONS)
-// Usa text/plain pero envía JSON real.
+// POST JSON sin preflight
 const postJsonNoPreflight = async (url, bodyObj) => {
   return fetch(url, {
     method: "POST",
@@ -61,6 +64,12 @@ export default function StudyList() {
 
   const [studies, setStudies] = useState([]);
 
+  // Estado reportes PDF
+  const [reportStatus, setReportStatus] = useState({});
+  const [uploadingStudyId, setUploadingStudyId] = useState(null);
+  const [deletingStudyId, setDeletingStudyId] = useState(null);
+  const fileInputRefs = useRef({});
+
   // WhatsApp modal
   const [waOpen, setWaOpen] = useState(false);
   const [waPhone, setWaPhone] = useState("");
@@ -70,7 +79,6 @@ export default function StudyList() {
   const yyyymmdd = useMemo(() => toYYYYMMDD(dateInput), [dateInput]);
 
   const buildViewerUrl = useCallback((studyOrthancId) => {
-    // Ajusta aquí si tu viewer usa otra ruta/parámetro
     const url = new URL(window.location.href);
     url.searchParams.set("study", studyOrthancId);
     url.searchParams.set("page", "viewer");
@@ -97,7 +105,6 @@ export default function StudyList() {
   const sendWhatsApp = useCallback(() => {
     const phone = sanitizePhone(waPhone);
 
-    // Regla mínima: debe venir con código país. Ej: 5037XXXXXXX, 39123..., etc.
     if (!phone || phone.length < 10) {
       setWaErr("Número inválido. Usa código país + número (ej: 50371234567).");
       return;
@@ -109,9 +116,6 @@ export default function StudyList() {
 
     const link = buildViewerUrl(waStudyId);
     const text = `Le compartimos el enlace con los resultados de su estudio: ${link}`;
-
-    // Esto abre WhatsApp Web/App con el mensaje prellenado.
-    // Para “enviar automático” necesitarías WhatsApp Business API (backend + costos).
     const waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
     window.open(waUrl, "_blank", "noopener,noreferrer");
 
@@ -149,11 +153,10 @@ export default function StudyList() {
       const sortByDateDesc = (a, b) => {
         const aKey = `${safe(a.date)}${safe(a.time)}`;
         const bKey = `${safe(b.date)}${safe(b.time)}`;
-        if (aKey !== bKey) return aKey < bKey ? 1 : -1; // DESC
+        if (aKey !== bKey) return aKey < bKey ? 1 : -1;
         return (a.id || "").localeCompare(b.id || "");
       };
 
-      // MODO FECHA: todos los estudios del día seleccionado
       if (yyyymmdd) {
         const findUrl = `${BASE}tools/find`;
         const findPayload = {
@@ -194,7 +197,6 @@ export default function StudyList() {
         return;
       }
 
-      // MODO GLOBAL: últimos 50 estudios
       const r = await fetch(`${BASE}studies?expand=true`);
       if (!r.ok) throw new Error(`Orthanc /studies HTTP ${r.status}`);
 
@@ -216,9 +218,57 @@ export default function StudyList() {
     }
   }, [BASE, yyyymmdd]);
 
+  const fetchReportStatus = useCallback(async (studyIds) => {
+    const ids = Array.isArray(studyIds)
+      ? [...new Set(studyIds.map((x) => String(x || "").trim()).filter(Boolean))]
+      : [];
+
+    if (!ids.length) {
+      setReportStatus({});
+      return;
+    }
+
+    try {
+      const resp = await fetch(`${REPORT_API_BASE}/studies/reports/status`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ studyIds: ids }),
+      });
+
+      if (!resp.ok) {
+        const t = await resp.text().catch(() => "");
+        throw new Error(`API report status HTTP ${resp.status} ${t || ""}`.trim());
+      }
+
+      const data = await resp.json();
+      const next = {};
+
+      (data?.items || []).forEach((item) => {
+        next[item.studyId] = {
+          exists: !!item.exists,
+          hasReport: !!item.hasReport,
+        };
+      });
+
+      setReportStatus(next);
+    } catch (e) {
+      console.error("Error consultando estado de reportes:", e);
+    }
+  }, []);
+
   useEffect(() => {
     fetchStudies();
   }, [fetchStudies]);
+
+  useEffect(() => {
+    if (!studies.length) {
+      setReportStatus({});
+      return;
+    }
+    fetchReportStatus(studies.map((s) => s.id));
+  }, [studies, fetchReportStatus]);
 
   const filtered = useMemo(() => {
     const nameNeedle = qName.trim().toLowerCase();
@@ -247,13 +297,126 @@ export default function StudyList() {
 
   const downloadStudyZip = async (studyOrthancId) => {
     try {
-      // Orthanc devuelve ZIP con los DICOM del estudio
       const url = `${BASE}studies/${studyOrthancId}/archive`;
       window.open(url, "_blank", "noopener,noreferrer");
     } catch (e) {
       setError(e?.message || "Error descargando DICOM");
     }
   };
+
+  const openPdf = useCallback((studyId) => {
+    const url = `${REPORT_API_BASE}/studies/${encodeURIComponent(
+      studyId
+    )}/report/content`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  }, []);
+
+  const triggerPdfUpload = useCallback((studyId) => {
+    const input = fileInputRefs.current[studyId];
+    if (input) input.click();
+  }, []);
+
+  const handlePdfSelected = useCallback(
+    async (studyId, file) => {
+      if (!studyId || !file) return;
+
+      if (file.type !== "application/pdf" && !/\.pdf$/i.test(file.name || "")) {
+        setError("Solo se permiten archivos PDF.");
+        return;
+      }
+
+      setUploadingStudyId(studyId);
+      setError("");
+
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+
+        const resp = await fetch(
+          `${REPORT_API_BASE}/studies/${encodeURIComponent(studyId)}/report`,
+          {
+            method: "POST",
+            body: formData,
+          }
+        );
+
+        const contentType = resp.headers.get("content-type") || "";
+        const payload = contentType.includes("application/json")
+          ? await resp.json()
+          : await resp.text();
+
+        if (!resp.ok) {
+          const msg =
+            typeof payload === "object" && payload?.message
+              ? payload.message
+              : `Error subiendo PDF (HTTP ${resp.status})`;
+          throw new Error(msg);
+        }
+
+        setReportStatus((prev) => ({
+          ...prev,
+          [studyId]: {
+            exists: true,
+            hasReport: true,
+            ...(typeof payload === "object" ? payload : {}),
+          },
+        }));
+      } catch (e) {
+        setError(e?.message || "Error subiendo PDF");
+      } finally {
+        setUploadingStudyId(null);
+        const input = fileInputRefs.current[studyId];
+        if (input) input.value = "";
+      }
+    },
+    []
+  );
+
+  const deletePdf = useCallback(async (studyId) => {
+    if (!studyId) return;
+
+    const confirmed = window.confirm(
+      "¿Deseas eliminar el reporte PDF asociado a este estudio?"
+    );
+    if (!confirmed) return;
+
+    setDeletingStudyId(studyId);
+    setError("");
+
+    try {
+      const resp = await fetch(
+        `${REPORT_API_BASE}/studies/${encodeURIComponent(studyId)}/report`,
+        {
+          method: "DELETE",
+        }
+      );
+
+      const contentType = resp.headers.get("content-type") || "";
+      const payload = contentType.includes("application/json")
+        ? await resp.json()
+        : await resp.text();
+
+      if (!resp.ok) {
+        const msg =
+          typeof payload === "object" && payload?.message
+            ? payload.message
+            : `Error eliminando PDF (HTTP ${resp.status})`;
+        throw new Error(msg);
+      }
+
+      setReportStatus((prev) => ({
+        ...prev,
+        [studyId]: {
+          exists: true,
+          hasReport: false,
+        },
+      }));
+    } catch (e) {
+      setError(e?.message || "Error eliminando PDF");
+    } finally {
+      setDeletingStudyId(null);
+    }
+  }, []);
 
   return (
     <div className="sl-page">
@@ -399,52 +562,104 @@ export default function StudyList() {
                 No hay estudios {yyyymmdd ? "para esa fecha" : "recientes"}.
               </div>
             ) : (
-              filtered.map((st) => (
-                <div className="sl-row" key={st.id}>
-                  <div className="sl-main">
-                    <div className="sl-top">
-                      <div className="sl-desc" title={st.description}>
-                        {st.description}
+              filtered.map((st) => {
+                const pdfInfo = reportStatus[st.id];
+                const hasPdf = !!pdfInfo?.hasReport;
+                const isUploading = uploadingStudyId === st.id;
+                const isDeleting = deletingStudyId === st.id;
+
+                return (
+                  <div className="sl-row" key={st.id}>
+                    <div className="sl-main">
+                      <div className="sl-top">
+                        <div className="sl-desc" title={st.description}>
+                          {st.description}
+                        </div>
+
+                        <div
+                          className="sl-meta"
+                          style={{ display: "flex", alignItems: "center", gap: 8 }}
+                        >
+                          <span className="sl-chip">{st.modality || "—"}</span>
+                          <span className="sl-chip">
+                            {st.date ? formatDateDDMMYYYY(st.date) : "—"}
+                          </span>
+                          {hasPdf && <span className="sl-chip">PDF</span>}
+                        </div>
                       </div>
 
-                      <div className="sl-meta">
-                        <span className="sl-chip">{st.modality || "—"}</span>
-                        <span className="sl-chip">
-                          {st.date ? formatDateDDMMYYYY(st.date) : "—"}
-                        </span>
+                      <div className="sl-sub">
+                        <div className="sl-patient" title={st.patientName}>
+                          {st.patientName}
+                        </div>
+                        <div className="sl-pid">ID: {st.patientID}</div>
                       </div>
+
+                      <div className="sl-id" title={st.id}>
+                        Orthanc ID: {st.id}
+                      </div>
+
+                      <input
+                        type="file"
+                        accept="application/pdf,.pdf"
+                        style={{ display: "none" }}
+                        ref={(el) => {
+                          if (el) fileInputRefs.current[st.id] = el;
+                        }}
+                        onChange={(e) =>
+                          handlePdfSelected(st.id, e.target.files?.[0] || null)
+                        }
+                      />
                     </div>
 
-                    <div className="sl-sub">
-                      <div className="sl-patient" title={st.patientName}>
-                        {st.patientName}
-                      </div>
-                      <div className="sl-pid">ID: {st.patientID}</div>
-                    </div>
+                    <div className="sl-actions">
+                      <button
+                        className="sl-btn sl-btnPrimary"
+                        onClick={() => openViewer(st.id)}
+                      >
+                        Ver en ViewerJS
+                      </button>
 
-                    <div className="sl-id" title={st.id}>
-                      Orthanc ID: {st.id}
+                      <button className="sl-btn" onClick={() => downloadStudyZip(st.id)}>
+                        DICOM
+                      </button>
+
+                      <button className="sl-btn" onClick={() => openWhatsAppModal(st.id)}>
+                        WhatsApp
+                      </button>
+
+                      <button
+                        className="sl-btn"
+                        onClick={() => triggerPdfUpload(st.id)}
+                        disabled={isUploading}
+                        title={hasPdf ? "Reemplazar PDF" : "Subir PDF"}
+                      >
+                        {isUploading
+                          ? "Subiendo..."
+                          : hasPdf
+                          ? "Reemplazar PDF"
+                          : "Subir PDF"}
+                      </button>
+
+                      {hasPdf && (
+                        <button className="sl-btn" onClick={() => openPdf(st.id)}>
+                          Ver PDF
+                        </button>
+                      )}
+
+                      {hasPdf && (
+                        <button
+                          className="sl-btn"
+                          onClick={() => deletePdf(st.id)}
+                          disabled={isDeleting}
+                        >
+                          {isDeleting ? "Eliminando..." : "Eliminar PDF"}
+                        </button>
+                      )}
                     </div>
                   </div>
-
-                  <div className="sl-actions">
-                    <button
-                      className="sl-btn sl-btnPrimary"
-                      onClick={() => openViewer(st.id)}
-                    >
-                      Ver en ViewerJS
-                    </button>
-
-                    <button className="sl-btn" onClick={() => downloadStudyZip(st.id)}>
-                      DICOM
-                    </button>
-
-                    <button className="sl-btn" onClick={() => openWhatsAppModal(st.id)}>
-                      WhatsApp
-                    </button>
-                  </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
 
@@ -454,7 +669,6 @@ export default function StudyList() {
         </div>
       </div>
 
-      {/* WhatsApp Modal */}
       {waOpen && (
         <div className="sl-modalBackdrop" onClick={() => setWaOpen(false)}>
           <div className="sl-modal" onClick={(e) => e.stopPropagation()}>
