@@ -74,12 +74,29 @@ const formatDate = (yyyymmdd) => {
   return `${d}/${m}/${y}`;
 };
 
+// --------- formato nombres dicom ----------
+const formatDicomPatientName = (dicomName) => {
+  const raw = String(dicomName || "").trim();
+  if (!raw) return "Paciente sin nombre";
+
+  const parts = raw.split("^").map((p) => p.trim()).filter(Boolean);
+
+  if (parts.length === 0) return "Paciente sin nombre";
+  if (parts.length === 1) return parts[0];
+
+  const lastNames = parts[0] || "";
+  const firstNames = parts.slice(1).join(" ").trim();
+
+  return firstNames ? `${firstNames}, ${lastNames}` : lastNames;
+};
+
 export default function App() {
   // --- router mini por query ---
   const params = new URLSearchParams(window.location.search);
   const page = params.get("page");
   const isStudyList = page === "study_list";
   const studyIdFromUrl = params.get("study");
+  const logoSrc = `${process.env.PUBLIC_URL}/logo.png`;
 
   const viewportRef = useRef(null);
   const titleRef = useRef(null);
@@ -305,7 +322,8 @@ export default function App() {
           const pTags = pJson.PatientMainDicomTags || pJson.MainDicomTags || {};
           setPatientInfo({
             id: patientId,
-            name: pTags.PatientName || "Paciente sin nombre",
+            //name: pTags.PatientName || "Paciente sin nombre",
+            name: formatDicomPatientName(pTags.PatientName),
             sex: pTags.PatientSex || "",
             birthDate: pTags.PatientBirthDate || "",
             patientId: pTags.PatientID || "",
@@ -708,9 +726,6 @@ if (wadouriMetaProvider) {
     el.addEventListener("touchmove", onTouchMove, { passive: false });
     el.addEventListener("touchend", onTouchEnd, { passive: true });
 
-    //el.addEventListener("mousedown", onPointerDown);
-    //el.addEventListener("mousemove", onPointerMove);
-    //window.addEventListener("mouseup", onPointerUp);
     el.addEventListener("pointerdown", onPointerDown);
     el.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
@@ -732,9 +747,6 @@ if (wadouriMetaProvider) {
         el.removeEventListener("touchmove", onTouchMove);
         el.removeEventListener("touchend", onTouchEnd);
 
-        //el.removeEventListener("mousedown", onPointerDown);
-        //el.removeEventListener("mousemove", onPointerMove);
-        //window.removeEventListener("mouseup", onPointerUp);
         el.removeEventListener("pointerdown", onPointerDown);
         el.removeEventListener("pointermove", onPointerMove);
         window.removeEventListener("pointerup", onPointerUp);
@@ -799,43 +811,57 @@ useEffect(() => {
   return (
     <div className="page">
       {/* Barra superior: paciente + lista de estudios + share */}
-      <div className="topGroup">
-        <button
-          type="button"
-          className="topButton"
-          onClick={() => setShowPatientModal(true)}
-          disabled={!patientInfo}
-        >
-          {patientInfo ? patientInfo.name : "Paciente sin nombre"}
-        </button>
+ <div className="viewerHero">
+  <img
+    src={logoSrc}
+    alt="Logo"
+    className="viewerHeroLogo"
+  />
 
-        <button
-          type="button"
-          className="topButton"
-          onClick={() => setShowStudiesModal(true)}
-          disabled={!patientStudies.length}
-        >
-          Lista de estudios ({patientStudies.length || 0})
-        </button>
+  <div className="viewerHeroText">
+    <h1 className="viewerHeroTitle">Entrega de resultados</h1>
 
-        <button
-          type="button"
-          className="topButton"
-          onClick={() => setShowShareModal(true)}
-          disabled={!currentStudyMeta}
-        >
-          {currentStudyMeta ? (
-            <>
-              {currentStudyMeta.description}
-              {currentStudyMeta.date && <> · {formatDate(currentStudyMeta.date)}</>}
-            </>
-          ) : (
-            "Sin estudio seleccionado"
-          )}
-        </button>
+    <div className="viewerHeroBadge">
+      {currentStudyMeta ? (
+        <>
+          {currentStudyMeta.description}
+          {currentStudyMeta.date && <> · {formatDate(currentStudyMeta.date)}</>}
+        </>
+      ) : (
+        "Cargando estudio"
+      )}
+    </div>
+  </div>
+</div>
 
+<div className="topGroup">
+  <button
+    type="button"
+    className="topButton"
+    onClick={() => setShowPatientModal(true)}
+    disabled={!patientInfo}
+  >
+    {patientInfo ? patientInfo.name : "Paciente sin nombre"}
+  </button>
 
-      </div>
+  <button
+    type="button"
+    className="topButton"
+    onClick={() => setShowStudiesModal(true)}
+    disabled={!patientStudies.length}
+  >
+    Lista de estudios ({patientStudies.length || 0})
+  </button>
+
+  <button
+    type="button"
+    className="topButton"
+    onClick={() => setShowShareModal(true)}
+    disabled={!currentStudyMeta}
+  >
+    Compartir estudio
+  </button>
+</div>
 
       {/* Título por serie */}
       <h3 className="title" ref={titleRef}>
@@ -1191,8 +1217,24 @@ useEffect(() => {
 
 
       <p className="footnote">
-        ↑/↓ serie · ←/→ instancia · Swipe vertical = serie · Swipe horizontal = instancia
-        (scrub continuo) · Hold en bordes = auto-scroll
+
+<div className="sl-footer">
+  <a
+    href="https://wa.me/50372150906"
+    target="_blank"
+    rel="noopener noreferrer"
+    className="sl-whatsappChip"
+  >
+    <span className="sl-waIcon">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="#25D366">
+        <path d="M20.52 3.48A11.86 11.86 0 0012.03 0C5.5 0 .21 5.3.21 11.83c0 2.08.54 4.11 1.56 5.9L0 24l6.46-1.7a11.8 11.8 0 005.57 1.42h.01c6.53 0 11.82-5.3 11.82-11.83 0-3.16-1.23-6.12-3.34-8.41zM12.04 21.5a9.7 9.7 0 01-4.95-1.34l-.35-.2-3.83 1.01 1.02-3.73-.23-.38a9.7 9.7 0 01-1.48-5.16c0-5.36 4.36-9.72 9.73-9.72 2.6 0 5.04 1.01 6.88 2.84a9.67 9.67 0 012.85 6.88c0 5.36-4.36 9.72-9.74 9.72zm5.3-7.26c-.29-.14-1.72-.85-1.99-.95-.27-.1-.47-.14-.66.14-.19.29-.76.95-.93 1.14-.17.19-.34.22-.63.07-.29-.14-1.23-.45-2.34-1.43-.86-.77-1.44-1.72-1.61-2.01-.17-.29-.02-.45.12-.59.12-.12.29-.31.43-.46.14-.14.19-.24.29-.41.1-.17.05-.31-.02-.46-.07-.14-.66-1.6-.91-2.2-.24-.58-.49-.5-.66-.5h-.56c-.19 0-.5.07-.76.36-.26.29-1 1-1 2.43 0 1.43 1.03 2.8 1.17 2.99.14.19 2.02 3.09 4.9 4.33.69.3 1.22.48 1.64.61.69.22 1.32.19 1.82.12.56-.08 1.72-.7 1.96-1.37.24-.67.24-1.24.17-1.37-.07-.12-.26-.19-.55-.33z"/>
+      </svg>
+    </span>
+
+    <span>WhatsApp +50372150906</span>
+  </a>
+</div><br/>
+
       </p>
     </div>
   );

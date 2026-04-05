@@ -417,6 +417,89 @@ html, body, #root {
   margin: 0 auto 12px auto;  /* centrado */
 }
 
+.viewerHero {
+  width: 90vw;
+  max-width: 980px;
+  margin: 0 auto 14px;
+
+  display: flex;
+  flex-direction: column;     /* 🔥 CAMBIO CLAVE */
+  align-items: center;        /* 🔥 CENTRA TODO */
+  justify-content: center;
+  text-align: center;         /* 🔥 centra texto */
+  gap: 10px;
+}
+
+.viewerHeroLogo {
+  width: 58px;
+  height: 58px;
+
+  border-radius: 10px;   /* 🔥 antes 50% */
+
+  object-fit: cover;
+  background: #ffffff;
+  border: 2px solid rgba(255,255,255,0.10);
+  box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.viewerHeroText {
+  display: flex;
+  flex-direction: column;
+  align-items: center;   /* 🔥 centra contenido interno */
+  gap: 6px;
+}
+
+.viewerHeroTitle {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.05;
+  font-weight: 800;
+  color: #f8fafc;
+  letter-spacing: -0.02em;
+}
+
+.viewerHeroBadge {
+  font-size: 13px;
+  font-weight: 500;
+  color: #9fb3d1;            /* más suave, menos “botón” */
+  
+  padding: 0;                /* 🔥 quitamos efecto botón */
+  border: none;
+  background: transparent;
+
+  display: block;
+}
+
+@media (min-width: 1024px) {
+  .viewerHero {
+    width: 65vw;
+  }
+}
+
+@media (max-width: 480px) {
+  .viewerHero {
+    gap: 10px;
+  }
+
+  .viewerHeroLogo {
+    width: 46px;
+    height: 46px;
+    flex: 0 0 46px;
+  }
+
+  .viewerHeroTitle {
+    font-size: 20px;
+  }
+
+  .viewerHeroBadge {
+    font-size: 11px;
+  }
+}
+
 .downloadIconBtn {
   position: absolute;
   top: 14px;
@@ -577,4 +660,54 @@ html, body, #root {
 
 .viewport.mode-measure {
   cursor: crosshair;
+}
+
+.whatsappLink {
+  display: inline-block;
+  margin-top: 10px;
+  font-size: 13px;
+  color: #25D366; /* verde WhatsApp */
+  text-decoration: none;
+  opacity: 0.85;
+}
+
+.whatsappLink:hover {
+  text-decoration: underline;
+  opacity: 1;
+}
+
+.sl-footer {
+  margin-top: 18px;
+  display: flex;
+  justify-content: center;
+}
+
+.sl-whatsappChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+
+  padding: 10px 14px;
+  border-radius: 12px;
+
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.10);
+
+  color: #eaeef6;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 500;
+
+  transition: all 0.2s ease;
+}
+
+.sl-whatsappChip:hover {
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.18);
+}
+
+.sl-waIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
