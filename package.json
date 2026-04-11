@@ -4,6 +4,7 @@
   "private": true,
   "proxy": "https://dcm.morisportal.com:50443/orthanc/",
   "dependencies": {
+    "@react-pdf/renderer": "^4.4.0",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.0",

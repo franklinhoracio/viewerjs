@@ -1,5 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./StudyList.css";
+import { pdf } from "@react-pdf/renderer";
+import ReportPdfDocument from "./ReportPdfDocument";
+import ReportFormModal from "./ReportFormModal";
 
 // Soporta CRA y Vite
 const ORTHANC_BASE =
@@ -49,6 +52,26 @@ const postJsonNoPreflight = async (url, bodyObj) => {
   });
 };
 
+//Editor de reportes PDF
+const formatDateDDMMYYYYSafe = (yyyymmdd) => {
+  const s = String(yyyymmdd || "");
+  if (!/^\d{8}$/.test(s)) return "";
+  return `${s.slice(6, 8)}/${s.slice(4, 6)}/${s.slice(0, 4)}`;
+};
+
+const formatDicomPatientName = (dicomName) => {
+  const raw = String(dicomName || "").trim();
+  if (!raw) return "Paciente sin nombre";
+
+  const parts = raw.split("^").map((p) => p.trim()).filter(Boolean);
+  if (!parts.length) return "Paciente sin nombre";
+  if (parts.length === 1) return parts[0];
+
+  const lastNames = parts[0] || "";
+  const firstNames = parts.slice(1).join(" ").trim();
+  return firstNames ? `${firstNames}, ${lastNames}` : lastNames;
+};
+
 export default function StudyList() {
   const BASE = normalizeOrthancBase(ORTHANC_BASE);
 
@@ -69,6 +92,12 @@ export default function StudyList() {
   const [uploadingStudyId, setUploadingStudyId] = useState(null);
   const [deletingStudyId, setDeletingStudyId] = useState(null);
   const fileInputRefs = useRef({});
+
+  // Editor de reportes PDF
+  const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [reportDraftStudy, setReportDraftStudy] = useState(null);
+  const [reportGenerating, setReportGenerating] = useState(false);
+  //const [reportPreviewLoading, setReportPreviewLoading] = useState(false);
 
   // WhatsApp modal
   const [waOpen, setWaOpen] = useState(false);
@@ -145,7 +174,7 @@ export default function StudyList() {
           date: data?.MainDicomTags?.StudyDate || "",
           time: data?.MainDicomTags?.StudyTime || "",
           modality,
-          patientName: data?.PatientMainDicomTags?.PatientName || "Desconocido",
+          patientName: formatDicomPatientName(data?.PatientMainDicomTags?.PatientName),
           patientID: data?.PatientMainDicomTags?.PatientID || "N/A",
         };
       };
@@ -354,13 +383,12 @@ export default function StudyList() {
         }
 
         setReportStatus((prev) => ({
-          ...prev,
-          [studyId]: {
-            exists: true,
-            hasReport: true,
-            ...(typeof payload === "object" ? payload : {}),
-          },
-        }));
+  ...prev,
+  [studyId]: {
+    exists: true,
+    hasReport: false,
+  },
+}));
       } catch (e) {
         setError(e?.message || "Error subiendo PDF");
       } finally {
@@ -417,6 +445,68 @@ export default function StudyList() {
       setDeletingStudyId(null);
     }
   }, []);
+
+  // Editor reporte PDF
+  const openGenerateReportModal = useCallback((study) => {
+  const today = new Date();
+  const dd = String(today.getDate()).padStart(2, "0");
+  const mm = String(today.getMonth() + 1).padStart(2, "0");
+  const yyyy = today.getFullYear();
+
+  setReportDraftStudy({
+    studyId: study.id,
+    patientName: study.patientName || "",
+    patientId: study.patientID || "",
+    documentNumber: "",
+    age: "",
+    birthDate: "",
+    acquisitionDate: formatDateDDMMYYYYSafe(study.date),
+    referrer: "PARTICULAR",
+    site: "",
+    studyCode: "",
+    reportDate: `${dd}/${mm}/${yyyy}`,
+    doctorName: "Dra. Ana Elizabeth Siu Brito",
+    doctorSpecialty: "Médico Radiólogo",
+    jvpm: "9155",
+    signatureUrl: "/firma.png",
+    stampUrl: "/sello.png",
+    indication: "",
+    technique:
+      "Se practicó Ultrasonografía Digital, con equipo VINNO R700, en tiempo real, transductores de alta resolución y técnicas para tejidos blandos superficiales.",
+    findings: "",
+    conclusion: "",
+  });
+
+  setReportModalOpen(true);
+}, []);
+
+const generateAndUploadReport = useCallback(
+  async (formData) => {
+    if (!reportDraftStudy?.studyId) return;
+
+    setReportGenerating(true);
+    setError("");
+
+    try {
+      const blob = await pdf(
+        <ReportPdfDocument data={formData} />
+      ).toBlob();
+
+      const fileName = `reporte-${reportDraftStudy.studyId}.pdf`;
+      const file = new File([blob], fileName, { type: "application/pdf" });
+
+      await handlePdfSelected(reportDraftStudy.studyId, file);
+
+      setReportModalOpen(false);
+      setReportDraftStudy(null);
+    } catch (e) {
+      setError(e?.message || "Error generando y guardando PDF");
+    } finally {
+      setReportGenerating(false);
+    }
+  },
+  [reportDraftStudy, handlePdfSelected]
+);
 
   return (
     <div className="sl-page">
@@ -586,9 +676,7 @@ export default function StudyList() {
                         <div className="sl-pid">ID: {st.patientID}</div>
                       </div>
 
-                      <div className="sl-id" title={st.id}>
-                        Orthanc ID: {st.id}
-                      </div>
+
 
                       <input
                         type="file"
@@ -617,6 +705,10 @@ export default function StudyList() {
 
                       <button className="sl-btn" onClick={() => openWhatsAppModal(st.id)}>
                         WhatsApp
+                      </button>
+
+                      <button className="sl-btn" onClick={() => openGenerateReportModal(st)}>
+                        Generar reporte
                       </button>
 
                       <button
@@ -672,6 +764,39 @@ export default function StudyList() {
 </div>
         </div>
       </div>
+    <ReportFormModal
+  open={reportModalOpen}
+  onClose={() => {
+    if (reportGenerating) return;
+    setReportModalOpen(false);
+    setReportDraftStudy(null);
+  }}
+  onGenerate={generateAndUploadReport}
+  initialData={
+    reportDraftStudy || {
+      patientName: "",
+      patientId: "",
+      documentNumber: "",
+      age: "",
+      birthDate: "",
+      acquisitionDate: "",
+      referrer: "",
+      site: "",
+      studyCode: "",
+      reportDate: "",
+      doctorName: "",
+      doctorSpecialty: "Médico Radiólogo",
+      jvpm: "",
+      signatureUrl: "/firma.png",
+      stampUrl: "/sello.png",
+      indication: "",
+      technique: "",
+      findings: "",
+      conclusion: "",
+    }
+  }
+  loading={reportGenerating}
+/>
 
       {waOpen && (
         <div className="sl-modalBackdrop" onClick={() => setWaOpen(false)}>
