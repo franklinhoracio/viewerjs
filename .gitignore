@@ -21,3 +21,16 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# entorno local
+.env
+
+# respaldos locales
+build_backup_*/
+*.backup
+
+# configuración específica de instalación
+public/config.json
+
+# script legacy del VPS
+deploy.sh

@@ -3,6 +3,8 @@ import "./StudyList.css";
 import { pdf } from "@react-pdf/renderer";
 import ReportPdfDocument from "./ReportPdfDocument";
 import ReportFormModal from "./ReportFormModal";
+import { getAuthHeaders, logout, hasRole } from "./auth";
+import { loadPublicConfig } from "./publicConfig";
 
 // Soporta CRA y Vite
 const ORTHANC_BASE =
@@ -10,14 +12,16 @@ const ORTHANC_BASE =
     import.meta.env &&
     import.meta.env.VITE_ORTHANC_BASE) ||
   process.env.REACT_APP_ORTHANC_BASE ||
-  "https://dcm.morisportal.com/orthanc/";
+  "/orthanc/";
 
 const REPORT_API_BASE =
   (typeof import.meta !== "undefined" &&
     import.meta.env &&
     import.meta.env.VITE_REPORT_API_BASE) ||
   process.env.REACT_APP_REPORT_API_BASE ||
-  "https://viewer.morisportal.com/api";
+  "/report-api";
+
+const OHIF_BASE = "https://pacs.morisportal.com/viewer";  
 
 // Normaliza para que SIEMPRE termine con "/"
 const normalizeOrthancBase = (base) => {
@@ -74,6 +78,16 @@ const formatDicomPatientName = (dicomName) => {
 
 export default function StudyList() {
   const BASE = normalizeOrthancBase(ORTHANC_BASE);
+  const canOpenOhif = hasRole(["ADMIN", "RADIOLOGO"]);
+
+  const [publicConfig, setPublicConfig] = useState({
+  whatsappNumber: "50372150906",
+  whatsappLabel: "+50372150906",
+  });
+
+  useEffect(() => {
+    loadPublicConfig().then(setPublicConfig);
+  }, []);
 
   // Por defecto vacío: modo “Últimos 50”
   const [dateInput, setDateInput] = useState("");
@@ -109,8 +123,8 @@ export default function StudyList() {
 
   const buildViewerUrl = useCallback((studyOrthancId) => {
     const url = new URL(window.location.href);
-    url.searchParams.set("study", studyOrthancId);
     url.searchParams.set("page", "viewer");
+    url.searchParams.set("study", studyOrthancId);
     return url.toString();
   }, []);
 
@@ -121,6 +135,16 @@ export default function StudyList() {
     },
     [buildViewerUrl]
   );
+
+  const openOhif = useCallback((studyInstanceUID) => {
+  if (!studyInstanceUID) {
+    setError("Este estudio no tiene StudyInstanceUID.");
+    return;
+  }
+
+  const url = `${OHIF_BASE}/${encodeURIComponent(studyInstanceUID)}`;
+  window.open(url, "_blank", "noopener,noreferrer");
+}, []);
 
   const sanitizePhone = (raw) => String(raw || "").replace(/[^\d]/g, "");
 
@@ -170,6 +194,7 @@ export default function StudyList() {
 
         return {
           id,
+          studyInstanceUID: data?.MainDicomTags?.StudyInstanceUID || "",
           description: data?.MainDicomTags?.StudyDescription || "Sin descripción",
           date: data?.MainDicomTags?.StudyDate || "",
           time: data?.MainDicomTags?.StudyTime || "",
@@ -260,9 +285,9 @@ export default function StudyList() {
     try {
       const resp = await fetch(`${REPORT_API_BASE}/studies/reports/status`, {
         method: "POST",
-        headers: {
+        headers: getAuthHeaders({
           "Content-Type": "application/json",
-        },
+        }),
         body: JSON.stringify({ studyIds: ids }),
       });
 
@@ -365,6 +390,7 @@ export default function StudyList() {
           `${REPORT_API_BASE}/studies/${encodeURIComponent(studyId)}/report`,
           {
             method: "POST",
+            headers: getAuthHeaders(),
             body: formData,
           }
         );
@@ -416,6 +442,7 @@ export default function StudyList() {
         `${REPORT_API_BASE}/studies/${encodeURIComponent(studyId)}/report`,
         {
           method: "DELETE",
+          headers: getAuthHeaders(),
         }
       );
 
@@ -514,7 +541,7 @@ const generateAndUploadReport = useCallback(
         <div className="sl-card">
 
           <picture>
-            <source srcSet="/banner_small.jpg" media="(max-width: 600px)" />
+            <source srcSet="/banner_small.jpg" media="(max-width: 650px)" />
             <img
                 src="/banner.jpg"
                 alt="Banner"
@@ -627,6 +654,10 @@ const generateAndUploadReport = useCallback(
             <button className="sl-btn" onClick={fetchStudies} disabled={loading}>
               Recargar
             </button>
+
+            <button className="sl-btn" onClick={logout}>
+              Salir
+            </button>
           </div>
 
           {error && (
@@ -699,6 +730,17 @@ const generateAndUploadReport = useCallback(
                         Ver en ViewerJS
                       </button>
 
+                      {canOpenOhif && (
+                      <button
+                          className="sl-btn"
+                          onClick={() => openOhif(st.studyInstanceUID)}
+                          disabled={!st.studyInstanceUID}
+                          title={!st.studyInstanceUID ? "Sin StudyInstanceUID" : "Abrir en OHIF"}
+                      >
+                      Ver en OHIF
+                      </button>
+                      )}
+
                       <button className="sl-btn" onClick={() => downloadStudyZip(st.id)}>
                         DICOM
                       </button>
@@ -707,9 +749,14 @@ const generateAndUploadReport = useCallback(
                         WhatsApp
                       </button>
 
-                      <button className="sl-btn" onClick={() => openGenerateReportModal(st)}>
-                        Generar reporte
+                      {canOpenOhif && (
+                      <button
+                        className="sl-btn"
+                        onClick={() => openGenerateReportModal(st)}
+                      >
+                      Generar reporte
                       </button>
+                      )}
 
                       <button
                         className="sl-btn"
@@ -748,7 +795,7 @@ const generateAndUploadReport = useCallback(
 
           <div className="sl-footer">
   <a
-    href="https://wa.me/50372150906"
+    href={`https://wa.me/${publicConfig.whatsappNumber}`}
     target="_blank"
     rel="noopener noreferrer"
     className="sl-whatsappChip"
@@ -759,7 +806,7 @@ const generateAndUploadReport = useCallback(
       </svg>
     </span>
 
-    <span>WhatsApp +50372150906</span>
+    <span>WhatsApp {publicConfig.whatsappLabel}</span>
   </a>
 </div>
         </div>
